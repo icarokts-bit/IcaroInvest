@@ -5,16 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IcaroInvest - Controle Patrimonial Privado</title>
     
-    <!-- Bibliotecas de UI e Gráficos -->
+    <!-- Scripts de Dependência em Ordem Crítica -->
     <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/prop-types@15.8.1/prop-types.min.js"></script>
+    <script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
+    
+    <!-- Recharts depende de React e PropTypes estarem no window -->
     <script src="https://cdn.jsdelivr.net/npm/recharts@2.12.7/umd/Recharts.min.js"></script>
+    
+    <!-- UI e Auxiliares -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
-    <!-- Firebase SDK (Compat v10) -->
+    <!-- Firebase SDK (Compat) -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 
@@ -26,8 +30,9 @@
         .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         .animate-in { animation: fadeIn 0.4s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        /* Adicionando ajuste para evitar quebra de valores */
         .value-text { white-space: nowrap; letter-spacing: -0.02em; }
+        input:focus { ring: 2px; ring-color: #2563eb; outline: none; }
+        .card-radius { border-radius: 2.5rem; }
     </style>
 </head>
 <body>
@@ -35,9 +40,12 @@
 
     <script type="text/babel">
         const { useState, useEffect, useMemo, useRef } = React;
-        const { PieChart, Pie, Cell, Legend, ResponsiveContainer, Tooltip } = window.Recharts;
+        
+        // Verificação segura do Recharts para evitar o erro de 'undefined'
+        const RechartsObj = window.Recharts || {};
+        const { PieChart, Pie, Cell, Legend, ResponsiveContainer, Tooltip } = RechartsObj;
 
-        const ALPHA_VANTAGE_KEY = "H24XAW2D59R2902Y";
+        const BRAPI_TOKEN = "pZapqBJxy1rE4pq3g4vy69";
         
         const firebaseConfig = {
             apiKey: "AIzaSyBy8hqZtXZO6CsK45INpunruxbZtdbxJx4",
@@ -53,35 +61,27 @@
         const COLORS = ['#0f172a', '#2563eb', '#059669', '#7c3aed', '#db2777', '#0891b2'];
 
         const B3_NAMES = {
-            // AÇÕES
             "PETR4": "Petrobras PN", "VALE3": "Vale S.A.", "ITUB4": "Itaú Unibanco", 
             "BBAS3": "Banco do Brasil", "ITSAS4": "Itaúsa PN", "LJQQ3": "Lojas Quero-Quero",
             "WEGE3": "WEG S.A.", "MGLU3": "Magalu", "ABEV3": "Ambev", "B3SA3": "B3 S.A.", 
-            "RENT3": "Localiza", "LREN3": "Lojas Renner", "GGBR4": "Gerdau", 
-            "EGIE3": "Engie Brasil", "RADL3": "Raia Drogasil", "CSAN3": "Cosan",
-            "JBSS3": "JBS", "VIVT3": "Vivo", "HYPE3": "Hypera", "ELET3": "Eletrobras",
-            // FIIs (Real Estate)
             "KNRI11": "FII Kinea Renda", "HGLG11": "FII CGHG Logística", "XPML11": "FII XP Malls", 
-            "VISC11": "FII Vinci Malls", "MXRF11": "FII Maxi Renda", "BCFF11": "FII BTG Pactual",
-            "XPLG11": "FII XP Log", "VILG11": "FII Vinci Log", "BRCR11": "FII BTG Corporativo",
-            "ALZR11": "FII Alianza Trust", "HSML11": "FII HSI Malls", "HGRU11": "FII CSHG Renda",
-            "IVVB11": "ETF S&P 500", "BOVA11": "ETF Ibovespa"
+            "MXRF11": "FII Maxi Renda", "VISC11": "FII Vinci Malls", "VGIR11": "FII Valora RE"
         };
 
         const Card = ({ children, className = "" }) => (
-            <div className={`bg-white p-5 rounded-[2.5rem] shadow-sm border border-slate-100 ${className}`}>
+            <div className={`bg-white p-6 card-radius shadow-sm border border-slate-100 ${className}`}>
                 {children}
             </div>
         );
 
         const StatCard = ({ title, value, iconName, colorClass }) => (
-            <Card className="flex items-center gap-3 hover:shadow-lg transition-all duration-300 min-w-0">
-                <div className={`p-3 md:p-4 rounded-2xl ${colorClass} text-white shadow-xl flex-shrink-0 flex items-center justify-center`}>
-                    <i data-lucide={iconName} className="w-5 h-5 md:w-6 md:h-6"></i>
+            <Card className="flex items-center gap-4 hover:shadow-lg transition-all duration-300">
+                <div className={`p-4 rounded-2xl ${colorClass} text-white shadow-xl flex-shrink-0 flex items-center justify-center`}>
+                    <i data-lucide={iconName} className="w-6 h-6"></i>
                 </div>
-                <div className="min-w-0 flex-1">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 truncate">{title}</p>
-                    <p className="text-base md:text-lg font-black text-slate-900 leading-tight value-text">
+                <div className="min-w-0">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1 truncate">{title}</p>
+                    <p className="text-lg md:text-xl font-black text-slate-900 leading-tight value-text">
                         {value}
                     </p>
                 </div>
@@ -95,10 +95,7 @@
             const [syncing, setSyncing] = useState(false);
             const [statusMsg, setStatusMsg] = useState(null);
             
-            // Estados para formulários
-            const [newAcao, setNewAcao] = useState({ ticker: '', quantidade: '', precoCompra: '' });
-            const [newRE, setNewRE] = useState({ ticker: '', quantidade: '', precoCompra: '' });
-            
+            const [newAsset, setNewAsset] = useState({ ticker: '', quantidade: '', precoCompra: '' });
             const dbRef = useRef(null);
 
             useEffect(() => {
@@ -120,6 +117,7 @@
                             setTimeout(() => lucide.createIcons(), 100);
                         });
                     } catch (e) {
+                        console.error("Firebase Init Error:", e);
                         setLoading(false);
                     }
                 };
@@ -140,67 +138,41 @@
                 if (!targetList || targetList.length === 0) return;
                 
                 setSyncing(true);
-                setStatusMsg(`Sincronizando ${category === 'acoes' ? 'Ações' : 'FIIs'}... (Limite 5/min)`);
+                setStatusMsg(`Sincronizando ${category.toUpperCase()} com Brapi...`);
                 
-                const updatedList = [...targetList];
+                const tickers = targetList
+                    .map(item => item.ticker.split('.')[0].trim().toUpperCase())
+                    .join(',');
                 
-                for (let i = 0; i < updatedList.length; i++) {
-                    const item = updatedList[i];
-                    const symbol = item.ticker.includes('.') ? item.ticker : `${item.ticker}.SA`;
-                    
-                    setStatusMsg(`Consultando B3: ${item.ticker}...`);
-                    
-                    try {
-                        const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${ALPHA_VANTAGE_KEY}`;
-                        const response = await fetch(url);
-                        const data = await response.json();
-                        
-                        if (data["Note"] || data["Information"]) {
-                            setStatusMsg("Limite Alpha Vantage atingido. Aguardando 60s...");
-                            await new Promise(r => setTimeout(r, 60000));
-                            i--; 
-                            continue;
-                        }
-
-                        const quote = data["Global Quote"];
-                        if (quote && quote["05. price"]) {
-                            updatedList[i] = {
-                                ...item,
-                                precoAtual: parseFloat(quote["05. price"])
-                            };
-                        }
-                    } catch (err) {
-                        console.error("Erro na consulta:", err);
-                    }
-
-                    // Atraso de 12 segundos para respeitar 5 chamadas/minuto
-                    if (i < updatedList.length - 1) {
-                        await new Promise(r => setTimeout(r, 12000));
-                    }
-                }
-
-                await updateData({ ...investments, [category]: updatedList });
-                setSyncing(false);
-                setStatusMsg("Sincronização concluída!");
-                setTimeout(() => setStatusMsg(null), 5000);
-            };
-
-            const editAsset = (id, category) => {
-                const item = investments[category].find(a => a.id === id);
-                const novaQtd = window.prompt("Nova Quantidade:", item.quantidade);
-                const novoMedio = window.prompt("Novo Valor de Compra Médio (R$):", item.precoMedio);
-                const novoAtual = window.prompt("Nova Cotação Atual (R$):", item.precoAtual);
-                
-                if (novaQtd && novoMedio && novoAtual) {
-                    const updated = investments[category].map(a => 
-                        a.id === id ? { 
-                            ...a, 
-                            quantidade: Number(novaQtd), 
-                            precoMedio: Number(novoMedio), 
-                            precoAtual: Number(novoAtual) 
-                        } : a
+                try {
+                    const response = await fetch(
+                        `https://brapi.dev/api/quote/${tickers}?modules=summaryProfile`,
+                        { headers: { "Authorization": `Bearer ${BRAPI_TOKEN}` } }
                     );
-                    updateData({ ...investments, [category]: updated });
+                    
+                    const data = await response.json();
+                    
+                    if (data && data.results) {
+                        const updatedList = targetList.map(item => {
+                            const cleanTicker = item.ticker.split('.')[0].toUpperCase();
+                            const result = data.results.find(r => r.symbol.toUpperCase() === cleanTicker);
+                            
+                            return result ? { 
+                                ...item, 
+                                precoAtual: result.regularMarketPrice,
+                                nome: result.shortName || item.nome
+                            } : item;
+                        });
+                        
+                        await updateData({ ...investments, [category]: updatedList });
+                        setStatusMsg("Patrimônio atualizado com sucesso!");
+                    }
+                } catch (err) {
+                    console.error(err);
+                    setStatusMsg("Erro de conexão com a API.");
+                } finally {
+                    setSyncing(false);
+                    setTimeout(() => setStatusMsg(null), 3000);
                 }
             };
 
@@ -227,7 +199,7 @@
                 <div className="h-screen flex items-center justify-center bg-slate-50">
                     <div className="text-center">
                         <div className="w-12 h-12 border-4 border-slate-900 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                        <p className="text-slate-400 font-black uppercase tracking-widest text-[10px]">Acessando Cloud...</p>
+                        <p className="text-slate-400 font-black uppercase tracking-widest text-[10px]">Acessando Nuvem...</p>
                     </div>
                 </div>
             );
@@ -236,18 +208,18 @@
                 <div className="min-h-screen p-4 md:p-8 max-w-6xl mx-auto">
                     <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-12">
                         <div className="flex items-center gap-4">
-                            <div className="bg-slate-900 p-4 rounded-3xl text-white shadow-2xl shadow-slate-200">
+                            <div className="bg-slate-900 p-4 rounded-3xl text-white shadow-2xl">
                                 <i data-lucide="shield-check" className="w-8 h-8"></i>
                             </div>
                             <div>
-                                <h1 className="text-2xl font-black uppercase tracking-tight">Icaro<span className="text-blue-600">Invest</span></h1>
-                                <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Controle Unificado B3</p>
+                                <h1 className="text-2xl font-black uppercase tracking-tight text-slate-900">Icaro<span className="text-blue-600">Invest</span></h1>
+                                <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest leading-none mt-1">Brapi Cloud v2.1</p>
                             </div>
                         </div>
 
                         <nav className="bg-white p-2 rounded-3xl shadow-sm border border-slate-200 flex overflow-x-auto gap-1 custom-scroll">
                             {[
-                                { id: 'dashboard', label: 'Resumo', icon: 'layout-dashboard' },
+                                { id: 'dashboard', label: 'Dashboard', icon: 'layout-dashboard' },
                                 { id: 'acoes', label: 'Ações', icon: 'briefcase' },
                                 { id: 'realEstate', label: 'Real Estate', icon: 'home' },
                                 { id: 'caixa', label: 'Caixa', icon: 'landmark' },
@@ -273,11 +245,11 @@
                         </div>
                     )}
 
-                    <main className="space-y-6">
+                    <main className="space-y-6 pb-12">
                         {}
                         { activeTab === 'dashboard' && (
                             <div className="space-y-6 animate-in">
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                                     <StatCard title="Patrimônio Total" value={formatBRL(totals.total)} iconName="trending-up" colorClass="bg-slate-900" />
                                     <StatCard title="Ações" value={formatBRL(totals.acoes)} iconName="briefcase" colorClass="bg-blue-600" />
                                     <StatCard title="Real Estate" value={formatBRL(totals.realEstate)} iconName="emerald-600" colorClass="bg-emerald-600" />
@@ -287,9 +259,9 @@
 
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                     <Card>
-                                        <h3 className="text-sm font-black uppercase text-slate-800 mb-8 tracking-widest text-center">Alocação de Ativos</h3>
+                                        <h3 className="text-sm font-black uppercase text-slate-800 mb-8 tracking-widest text-center">Alocação por Categoria</h3>
                                         <div className="h-72">
-                                            {allocationData.length > 0 ? (
+                                            {PieChart && allocationData.length > 0 ? (
                                                 <ResponsiveContainer width="100%" height="100%">
                                                     <PieChart>
                                                         <Pie data={allocationData} innerRadius={60} outerRadius={90} paddingAngle={8} dataKey="value" cornerRadius={8}>
@@ -300,22 +272,24 @@
                                                     </PieChart>
                                                 </ResponsiveContainer>
                                             ) : (
-                                                <div className="h-full flex items-center justify-center text-slate-300 italic text-sm font-black uppercase tracking-widest">Sem ativos registrados</div>
+                                                <div className="h-full flex items-center justify-center text-slate-300 italic text-sm font-black uppercase tracking-widest">
+                                                    {!PieChart ? "Gráfico Indisponível" : "Sem ativos registrados"}
+                                                </div>
                                             )}
                                         </div>
                                     </Card>
 
                                     <Card>
-                                        <h3 className="text-sm font-black uppercase text-slate-800 mb-8 tracking-widest">Resumo Consolidado</h3>
+                                        <h3 className="text-sm font-black uppercase text-slate-800 mb-8 tracking-widest">Consolidado Percentual</h3>
                                         <div className="space-y-3">
                                             {allocationData.map((item, idx) => (
-                                                <div key={item.name} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 group">
+                                                <div key={item.name} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
                                                     <div className="flex items-center gap-3 font-bold text-sm text-slate-700">
                                                         <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[idx % COLORS.length] }}></div>
                                                         <span>{item.name}</span>
                                                     </div>
                                                     <div className="text-right">
-                                                        <div className="font-black text-slate-900">{formatBRL(item.value)}</div>
+                                                        <div className="font-black text-slate-900 leading-tight">{formatBRL(item.value)}</div>
                                                         <div className="text-[10px] text-slate-400 font-black tracking-widest">{((item.value / (totals.total || 1)) * 100).toFixed(1)}%</div>
                                                     </div>
                                                 </div>
@@ -332,9 +306,9 @@
                                 <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
                                     <div>
                                         <h3 className="text-2xl font-black uppercase tracking-tight">
-                                            {activeTab === 'acoes' ? 'Carteira de Ações' : 'Carteira de Real Estate (FIIs)'}
+                                            {activeTab === 'acoes' ? 'Carteira de Ações' : 'Fundos Imobiliários'}
                                         </h3>
-                                        <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Alpha Vantage integrada para {activeTab === 'acoes' ? 'B3' : 'FIIs'}</p>
+                                        <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Conexão Brapi.dev Ativa</p>
                                     </div>
                                     <button 
                                         onClick={() => syncCategory(activeTab)}
@@ -344,51 +318,37 @@
                                         }`}
                                     >
                                         <i data-lucide="refresh-cw" className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`}></i>
-                                        {syncing ? 'Sincronizando...' : `Sincronizar ${activeTab === 'acoes' ? 'B3' : 'FIIs'}`}
+                                        {syncing ? 'Atualizando...' : `Sincronizar B3`}
                                     </button>
                                 </div>
 
                                 <form 
                                     onSubmit={(e) => {
                                         e.preventDefault();
-                                        const form = activeTab === 'acoes' ? newAcao : newRE;
-                                        if (!form.ticker || !form.quantidade || !form.precoCompra) return;
-                                        const ticker = form.ticker.toUpperCase();
+                                        if (!newAsset.ticker || !newAsset.quantidade || !newAsset.precoCompra) return;
+                                        const ticker = newAsset.ticker.toUpperCase().split('.')[0].trim();
                                         const item = {
                                             id: Date.now(),
                                             ticker,
-                                            nome: B3_NAMES[ticker] || (activeTab === 'acoes' ? "Ativo B3" : "FII B3"),
-                                            quantidade: Number(form.quantidade),
-                                            precoMedio: Number(form.precoCompra),
-                                            precoAtual: Number(form.precoCompra)
+                                            nome: B3_NAMES[ticker] || "Ativo B3",
+                                            quantidade: Number(newAsset.quantidade),
+                                            precoMedio: Number(newAsset.precoCompra),
+                                            precoAtual: Number(newAsset.precoCompra)
                                         };
                                         updateData({ ...investments, [activeTab]: [...(investments[activeTab] || []), item] });
-                                        activeTab === 'acoes' ? setNewAcao({ ticker: '', quantidade: '', precoCompra: '' }) : setNewRE({ ticker: '', quantidade: '', precoCompra: '' });
+                                        setNewAsset({ ticker: '', quantidade: '', precoCompra: '' });
                                     }}
                                     className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-10 p-8 bg-slate-900 rounded-[2.5rem]"
                                 >
                                     <input 
-                                        type="text" placeholder="Ticker" list="tickers-list" 
-                                        value={activeTab === 'acoes' ? newAcao.ticker : newRE.ticker} 
-                                        onChange={e => activeTab === 'acoes' ? setNewAcao({...newAcao, ticker: e.target.value}) : setNewRE({...newRE, ticker: e.target.value})} 
-                                        className="p-4 bg-slate-800 text-white rounded-xl outline-none font-bold placeholder:text-slate-600 text-sm" 
+                                        type="text" placeholder="Ticker (ex: PETR4)" list="tickers-list" 
+                                        value={newAsset.ticker} 
+                                        onChange={e => setNewAsset({...newAsset, ticker: e.target.value})} 
+                                        className="p-4 bg-slate-800 text-white rounded-xl outline-none font-bold placeholder:text-slate-600 text-sm uppercase" 
                                     />
                                     <datalist id="tickers-list">{Object.keys(B3_NAMES).map(t => <option key={t} value={t}>{B3_NAMES[t]}</option>)}</datalist>
-                                    
-                                    <input 
-                                        type="number" placeholder="Quantidade" 
-                                        value={activeTab === 'acoes' ? newAcao.quantidade : newRE.quantidade} 
-                                        onChange={e => activeTab === 'acoes' ? setNewAcao({...newAcao, quantidade: e.target.value}) : setNewRE({...newRE, quantidade: e.target.value})} 
-                                        className="p-4 bg-slate-800 text-white rounded-xl outline-none font-bold placeholder:text-slate-600 text-sm" 
-                                    />
-                                    
-                                    <input 
-                                        type="number" step="0.01" placeholder="Vlr Compra" 
-                                        value={activeTab === 'acoes' ? newAcao.precoCompra : newRE.precoCompra} 
-                                        onChange={e => activeTab === 'acoes' ? setNewAcao({...newAcao, precoCompra: e.target.value}) : setNewRE({...newRE, precoCompra: e.target.value})} 
-                                        className="p-4 bg-slate-800 text-white rounded-xl outline-none font-bold placeholder:text-slate-600 text-sm" 
-                                    />
-                                    
+                                    <input type="number" placeholder="Quantidade" value={newAsset.quantidade} onChange={e => setNewAsset({...newAsset, quantidade: e.target.value})} className="p-4 bg-slate-800 text-white rounded-xl outline-none font-bold text-sm" />
+                                    <input type="number" step="0.01" placeholder="Preço Médio" value={newAsset.precoCompra} onChange={e => setNewAsset({...newAsset, precoCompra: e.target.value})} className="p-4 bg-slate-800 text-white rounded-xl outline-none font-bold text-sm" />
                                     <button type="submit" className="bg-blue-600 text-white rounded-xl font-black uppercase text-xs tracking-widest hover:bg-blue-500 transition-colors">ADICIONAR</button>
                                 </form>
 
@@ -398,11 +358,11 @@
                                             <tr className="border-b border-slate-100 text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">
                                                 <th className="pb-6">Ativo</th>
                                                 <th className="pb-6 text-center">Qtd</th>
-                                                <th className="pb-6">Preço Médio</th>
-                                                <th className="pb-6">Preço Atual</th>
-                                                <th className="pb-6">Total Patrimônio</th>
+                                                <th className="pb-6">P. Médio</th>
+                                                <th className="pb-6">P. Atual</th>
+                                                <th className="pb-6">Patrimônio</th>
                                                 <th className="pb-6">Lucro R$ / %</th>
-                                                <th className="pb-6 text-right">Opções</th>
+                                                <th className="pb-6"></th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -415,19 +375,32 @@
                                                     <tr key={a.id} className="border-b border-slate-50 hover:bg-slate-50 transition-all group">
                                                         <td className="py-5">
                                                             <div className="font-black text-slate-900 leading-tight">{a.ticker}</div>
-                                                            <div className="text-[10px] text-slate-400 font-bold uppercase leading-none">{a.nome}</div>
+                                                            <div className="text-[10px] text-slate-400 font-bold uppercase leading-none truncate max-w-[150px]">{a.nome}</div>
                                                         </td>
                                                         <td className="py-5 text-center font-bold text-slate-600">{a.quantidade}</td>
                                                         <td className="py-5 text-sm font-medium text-slate-500">{formatBRL(a.precoMedio)}</td>
-                                                        <td className="py-5 font-black text-blue-600">{formatBRL(a.precoAtual)}</td>
-                                                        <td className="py-5 font-black text-slate-900">{formatBRL(totalAtual)}</td>
+                                                        <td className="py-5 font-black text-blue-600 leading-tight cursor-pointer hover:underline" onClick={() => {
+                                                            const np = prompt("Novo Preço Atual:", a.precoAtual);
+                                                            if (np) {
+                                                                const up = investments[activeTab].map(x => x.id === a.id ? {...x, precoAtual: Number(np)} : x);
+                                                                updateData({...investments, [activeTab]: up});
+                                                            }
+                                                        }}>{formatBRL(a.precoAtual)}</td>
+                                                        <td className="py-5 font-black text-slate-900 leading-tight">{formatBRL(totalAtual)}</td>
                                                         <td className={`py-5 font-black text-sm ${lucroReal >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-                                                            <div>{formatBRL(lucroReal)}</div>
-                                                            <div className="text-[10px] uppercase opacity-70">({lucroPct >= 0 ? '+' : ''}{lucroPct.toFixed(2)}%)</div>
+                                                            <div className="leading-tight">{formatBRL(lucroReal)}</div>
+                                                            <div className="text-[10px] uppercase opacity-70 mt-1">({lucroPct >= 0 ? '+' : ''}{lucroPct.toFixed(2)}%)</div>
                                                         </td>
                                                         <td className="py-5 text-right">
                                                             <div className="flex justify-end gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                <button onClick={() => editAsset(a.id, activeTab)} className="text-slate-400 hover:text-slate-900"><i data-lucide="edit-3" className="w-5 h-5"></i></button>
+                                                                <button onClick={() => {
+                                                                    const nq = prompt("Nova Quantidade:", a.quantidade);
+                                                                    const nm = prompt("Novo Preço Médio:", a.precoMedio);
+                                                                    if (nq && nm) {
+                                                                        const up = investments[activeTab].map(x => x.id === a.id ? {...x, quantidade: Number(nq), precoMedio: Number(nm)} : x);
+                                                                        updateData({...investments, [activeTab]: up});
+                                                                    }
+                                                                }} className="text-slate-400 hover:text-slate-900"><i data-lucide="edit-3" className="w-5 h-5"></i></button>
                                                                 <button onClick={() => updateData({ ...investments, [activeTab]: investments[activeTab].filter(x => x.id !== a.id) })} className="text-slate-400 hover:text-rose-600"><i data-lucide="trash-2" className="w-5 h-5"></i></button>
                                                             </div>
                                                         </td>
@@ -445,38 +418,37 @@
                             <Card className="animate-in">
                                 <div className="flex justify-between items-center mb-8">
                                     <h3 className="text-2xl font-black uppercase tracking-tight">
-                                        {activeTab === 'caixa' ? 'Caixa' : 'Alternativos'}
+                                        {activeTab === 'caixa' ? 'Reserva de Caixa' : 'Ativos Alternativos'}
                                     </h3>
                                     <button 
                                         onClick={() => {
-                                            const nome = window.prompt("Nome do Ativo:");
-                                            const valor = window.prompt("Valor Total (R$):");
+                                            const nome = window.prompt("Nome do Lançamento:");
+                                            const valor = window.prompt("Valor (R$):");
                                             if (nome && valor) {
                                                 const item = { id: Date.now(), nome, valor: Number(valor) };
                                                 updateData({ ...investments, [activeTab]: [...(investments[activeTab] || []), item] });
                                             }
                                         }}
-                                        className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-black text-[10px] tracking-widest hover:bg-black transition-all shadow-xl"
+                                        className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-black text-[10px] tracking-widest hover:bg-black shadow-xl"
                                     >
                                         NOVO LANÇAMENTO
                                     </button>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     {(investments[activeTab] || []).map(item => (
-                                        <div key={item.id} className="flex justify-between items-center p-6 bg-slate-50 rounded-[2.5rem] border border-slate-100 group hover:border-slate-300">
+                                        <div key={item.id} className="flex justify-between items-center p-6 bg-slate-50 rounded-[2.5rem] border border-slate-100 group hover:border-slate-300 transition-all">
                                             <span className="font-black text-slate-800 text-sm uppercase tracking-tight">{item.nome}</span>
-                                            <div className="flex items-center gap-4">
+                                            <div className="flex items-center gap-6">
                                                 <span className="font-black text-slate-900 text-xl">{formatBRL(item.valor)}</span>
                                                 <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
                                                     <button onClick={() => {
-                                                        const n = window.prompt("Novo Nome:", item.nome);
-                                                        const v = window.prompt("Novo Valor:", item.valor);
-                                                        if (n && v) {
-                                                            const updated = investments[activeTab].map(x => x.id === item.id ? { ...x, nome: n, valor: Number(v) } : x);
-                                                            updateData({ ...investments, [activeTab]: updated });
+                                                        const nv = prompt("Novo Valor:", item.valor);
+                                                        if (nv) {
+                                                            const up = investments[activeTab].map(x => x.id === item.id ? {...x, valor: Number(nv)} : x);
+                                                            updateData({...investments, [activeTab]: up});
                                                         }
                                                     }} className="text-slate-400 hover:text-slate-900"><i data-lucide="edit-3" className="w-4 h-4"></i></button>
-                                                    <button onClick={() => updateData({ ...investments, [activeTab]: investments[activeTab].filter(x => x.id !== item.id) })} className="text-slate-400 hover:text-rose-600"><i data-lucide="trash-2" className="w-4 h-4"></i></button>
+                                                    <button onClick={() => updateData({ ...investments, [activeTab]: investments[activeTab].filter(x => x.id !== item.id) })} className="text-slate-300 hover:text-rose-600 transition-all"><i data-lucide="trash-2" className="w-4 h-4"></i></button>
                                                 </div>
                                             </div>
                                         </div>
@@ -486,8 +458,8 @@
                         )}
                     </main>
 
-                    <footer className="mt-20 pt-10 border-t border-slate-100 text-center opacity-30">
-                        <p className="text-[10px] font-black uppercase tracking-[0.4em]">IcaroInvest • Alpha Vantage API • v4.0</p>
+                    <footer className="mt-12 py-8 border-t border-slate-100 text-center opacity-40">
+                        <p className="text-[10px] font-black uppercase tracking-[0.4em]">IcaroInvest • Cloud System v2.1 • Brapi Fixed Integration</p>
                     </footer>
                 </div>
             );
