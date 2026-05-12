@@ -50,16 +50,20 @@
         const INITIAL_DATA = { acoes: [], realEstate: [], caixa: [], alternativos: [] };
         const COLORS = ['#0f172a', '#2563eb', '#059669', '#7c3aed', '#db2777', '#0891b2'];
 
-        // Lista estendida de nomes da B3
         const B3_NAMES = {
+            // AÇÕES
             "PETR4": "Petrobras PN", "VALE3": "Vale S.A.", "ITUB4": "Itaú Unibanco", 
             "BBAS3": "Banco do Brasil", "ITSAS4": "Itaúsa PN", "LJQQ3": "Lojas Quero-Quero",
-            "WEGE3": "WEG S.A.", "MGLU3": "Magalu", "KNRI11": "FII Kinea", "HGLG11": "FII Logística",
-            "ABEV3": "Ambev", "B3SA3": "B3 S.A.", "RENT3": "Localiza", "LREN3": "Lojas Renner",
-            "GGBR4": "Gerdau", "EGIE3": "Engie Brasil", "RADL3": "Raia Drogasil", "CSAN3": "Cosan",
+            "WEGE3": "WEG S.A.", "MGLU3": "Magalu", "ABEV3": "Ambev", "B3SA3": "B3 S.A.", 
+            "RENT3": "Localiza", "LREN3": "Lojas Renner", "GGBR4": "Gerdau", 
+            "EGIE3": "Engie Brasil", "RADL3": "Raia Drogasil", "CSAN3": "Cosan",
             "JBSS3": "JBS", "VIVT3": "Vivo", "HYPE3": "Hypera", "ELET3": "Eletrobras",
-            "XPML11": "FII XP Malls", "VISC11": "FII Vinci Malls", "MXRF11": "FII Maxi Renda",
-            "BCFF11": "FII BTG Pactual", "IVVB11": "ETF S&P 500", "BOVA11": "ETF Ibovespa"
+            // FIIs (Real Estate)
+            "KNRI11": "FII Kinea Renda", "HGLG11": "FII CGHG Logística", "XPML11": "FII XP Malls", 
+            "VISC11": "FII Vinci Malls", "MXRF11": "FII Maxi Renda", "BCFF11": "FII BTG Pactual",
+            "XPLG11": "FII XP Log", "VILG11": "FII Vinci Log", "BRCR11": "FII BTG Corporativo",
+            "ALZR11": "FII Alianza Trust", "HSML11": "FII HSI Malls", "HGRU11": "FII CSHG Renda",
+            "IVVB11": "ETF S&P 500", "BOVA11": "ETF Ibovespa"
         };
 
         const Card = ({ children, className = "" }) => (
@@ -86,7 +90,10 @@
             const [investments, setInvestments] = useState(INITIAL_DATA);
             const [syncing, setSyncing] = useState(false);
             const [statusMsg, setStatusMsg] = useState(null);
+            
+            // Estados para formulários
             const [newAcao, setNewAcao] = useState({ ticker: '', quantidade: '', precoCompra: '' });
+            const [newRE, setNewRE] = useState({ ticker: '', quantidade: '', precoCompra: '' });
             
             const dbRef = useRef(null);
 
@@ -124,38 +131,37 @@
                 }
             };
 
-            const syncAlphaVantage = async () => {
-                if (investments.acoes.length === 0) return;
+            const syncCategory = async (category) => {
+                const targetList = investments[category];
+                if (!targetList || targetList.length === 0) return;
                 
                 setSyncing(true);
-                setStatusMsg("Atenção: Limite diário de 25 consultas Alpha Vantage.");
+                setStatusMsg(`Sincronizando ${category === 'acoes' ? 'Ações' : 'FIIs'}... (Limite 5/min)`);
                 
-                const updatedAcoes = [...investments.acoes];
+                const updatedList = [...targetList];
                 
-                for (let i = 0; i < updatedAcoes.length; i++) {
-                    const acao = updatedAcoes[i];
-                    // Formato B3: TICKER.SA
-                    const symbol = acao.ticker.includes('.') ? acao.ticker : `${acao.ticker}.SA`;
+                for (let i = 0; i < updatedList.length; i++) {
+                    const item = updatedList[i];
+                    const symbol = item.ticker.includes('.') ? item.ticker : `${item.ticker}.SA`;
                     
-                    setStatusMsg(`Consultando B3: ${acao.ticker}...`);
+                    setStatusMsg(`Consultando B3: ${item.ticker}...`);
                     
                     try {
                         const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${ALPHA_VANTAGE_KEY}`;
                         const response = await fetch(url);
                         const data = await response.json();
                         
-                        // Verificação de limites da API Gratuita
                         if (data["Note"] || data["Information"]) {
-                            setStatusMsg("Limite de API (5 chamadas/min) atingido. Aguarde.");
-                            await new Promise(r => setTimeout(r, 60000)); // Espera 1 min
-                            i--; // Tenta o mesmo ativo novamente
+                            setStatusMsg("Limite Alpha Vantage atingido. Aguardando 60s...");
+                            await new Promise(r => setTimeout(r, 60000));
+                            i--; 
                             continue;
                         }
 
                         const quote = data["Global Quote"];
                         if (quote && quote["05. price"]) {
-                            updatedAcoes[i] = {
-                                ...acao,
+                            updatedList[i] = {
+                                ...item,
                                 precoAtual: parseFloat(quote["05. price"])
                             };
                         }
@@ -163,26 +169,26 @@
                         console.error("Erro na consulta:", err);
                     }
 
-                    // Atraso de 12 segundos entre chamadas para garantir 5/min (60s / 5 = 12s)
-                    if (i < updatedAcoes.length - 1) {
+                    // Atraso de 12 segundos para respeitar 5 chamadas/minuto
+                    if (i < updatedList.length - 1) {
                         await new Promise(r => setTimeout(r, 12000));
                     }
                 }
 
-                await updateData({ ...investments, acoes: updatedAcoes });
+                await updateData({ ...investments, [category]: updatedList });
                 setSyncing(false);
-                setStatusMsg("Carteira sincronizada com sucesso!");
+                setStatusMsg("Sincronização concluída!");
                 setTimeout(() => setStatusMsg(null), 5000);
             };
 
-            const editAcao = (id) => {
-                const acao = investments.acoes.find(a => a.id === id);
-                const novaQtd = window.prompt("Nova Quantidade:", acao.quantidade);
-                const novoMedio = window.prompt("Novo Valor de Compra Médio (R$):", acao.precoMedio);
-                const novoAtual = window.prompt("Nova Cotação Atual (R$):", acao.precoAtual);
+            const editAsset = (id, category) => {
+                const item = investments[category].find(a => a.id === id);
+                const novaQtd = window.prompt("Nova Quantidade:", item.quantidade);
+                const novoMedio = window.prompt("Novo Valor de Compra Médio (R$):", item.precoMedio);
+                const novoAtual = window.prompt("Nova Cotação Atual (R$):", item.precoAtual);
                 
                 if (novaQtd && novoMedio && novoAtual) {
-                    const updated = investments.acoes.map(a => 
+                    const updated = investments[category].map(a => 
                         a.id === id ? { 
                             ...a, 
                             quantidade: Number(novaQtd), 
@@ -190,16 +196,16 @@
                             precoAtual: Number(novoAtual) 
                         } : a
                     );
-                    updateData({ ...investments, acoes: updated });
+                    updateData({ ...investments, [category]: updated });
                 }
             };
 
             const totals = useMemo(() => {
-                const getSum = (arr, key) => (arr || []).reduce((a, b) => a + Number(b[key] || 0), 0);
-                const acoesSum = (investments.acoes || []).reduce((a, b) => a + (Number(b.quantidade) * Number(b.precoAtual || 0)), 0);
-                const reSum = getSum(investments.realEstate, 'valor');
-                const caixaSum = getSum(investments.caixa, 'valor');
-                const altSum = getSum(investments.alternativos, 'valor');
+                const getSum = (arr) => (arr || []).reduce((a, b) => a + (Number(b.quantidade || 1) * Number(b.precoAtual || b.valor || 0)), 0);
+                const acoesSum = getSum(investments.acoes);
+                const reSum = getSum(investments.realEstate);
+                const caixaSum = (investments.caixa || []).reduce((a, b) => a + Number(b.valor || 0), 0);
+                const altSum = (investments.alternativos || []).reduce((a, b) => a + Number(b.valor || 0), 0);
                 const total = acoesSum + reSum + caixaSum + altSum;
                 return { acoes: acoesSum, realEstate: reSum, caixa: caixaSum, alternativos: altSum, total };
             }, [investments]);
@@ -231,7 +237,7 @@
                             </div>
                             <div>
                                 <h1 className="text-2xl font-black uppercase tracking-tight">Icaro<span className="text-blue-600">Invest</span></h1>
-                                <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Alpha Vantage Integrada</p>
+                                <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Controle Unificado B3</p>
                             </div>
                         </div>
 
@@ -264,6 +270,7 @@
                     )}
 
                     <main className="space-y-6">
+                        {}
                         { activeTab === 'dashboard' && (
                             <div className="space-y-6 animate-in">
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -315,47 +322,69 @@
                             </div>
                         )}
 
-                        { activeTab === 'acoes' && (
+                        {}
+                        { (activeTab === 'acoes' || activeTab === 'realEstate') && (
                             <Card className="animate-in">
                                 <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
                                     <div>
-                                        <h3 className="text-2xl font-black uppercase tracking-tight">Carteira de Ações</h3>
-                                        <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Sincronização via Alpha Vantage</p>
+                                        <h3 className="text-2xl font-black uppercase tracking-tight">
+                                            {activeTab === 'acoes' ? 'Carteira de Ações' : 'Carteira de Real Estate (FIIs)'}
+                                        </h3>
+                                        <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Alpha Vantage integrada para {activeTab === 'acoes' ? 'B3' : 'FIIs'}</p>
                                     </div>
                                     <button 
-                                        onClick={syncAlphaVantage}
+                                        onClick={() => syncCategory(activeTab)}
                                         disabled={syncing}
                                         className={`flex items-center gap-3 px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-xl ${
                                             syncing ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-emerald-600 text-white hover:bg-emerald-500'
                                         }`}
                                     >
                                         <i data-lucide="refresh-cw" className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`}></i>
-                                        {syncing ? 'Sincronizando...' : 'Sincronizar B3'}
+                                        {syncing ? 'Sincronizando...' : `Sincronizar ${activeTab === 'acoes' ? 'B3' : 'FIIs'}`}
                                     </button>
                                 </div>
 
                                 <form 
                                     onSubmit={(e) => {
                                         e.preventDefault();
-                                        if (!newAcao.ticker || !newAcao.quantidade || !newAcao.precoCompra) return;
-                                        const ticker = newAcao.ticker.toUpperCase();
+                                        const form = activeTab === 'acoes' ? newAcao : newRE;
+                                        if (!form.ticker || !form.quantidade || !form.precoCompra) return;
+                                        const ticker = form.ticker.toUpperCase();
                                         const item = {
                                             id: Date.now(),
                                             ticker,
-                                            nome: B3_NAMES[ticker] || "Ativo B3",
-                                            quantidade: Number(newAcao.quantidade),
-                                            precoMedio: Number(newAcao.precoCompra),
-                                            precoAtual: Number(newAcao.precoCompra)
+                                            nome: B3_NAMES[ticker] || (activeTab === 'acoes' ? "Ativo B3" : "FII B3"),
+                                            quantidade: Number(form.quantidade),
+                                            precoMedio: Number(form.precoCompra),
+                                            precoAtual: Number(form.precoCompra)
                                         };
-                                        updateData({ ...investments, acoes: [...investments.acoes, item] });
-                                        setNewAcao({ ticker: '', quantidade: '', precoCompra: '' });
+                                        updateData({ ...investments, [activeTab]: [...(investments[activeTab] || []), item] });
+                                        activeTab === 'acoes' ? setNewAcao({ ticker: '', quantidade: '', precoCompra: '' }) : setNewRE({ ticker: '', quantidade: '', precoCompra: '' });
                                     }}
                                     className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-10 p-8 bg-slate-900 rounded-[2.5rem]"
                                 >
-                                    <input type="text" placeholder="Ticker" list="tickers-list" value={newAcao.ticker} onChange={e => setNewAcao({...newAcao, ticker: e.target.value})} className="p-4 bg-slate-800 text-white rounded-xl outline-none font-bold placeholder:text-slate-600 text-sm" />
+                                    <input 
+                                        type="text" placeholder="Ticker" list="tickers-list" 
+                                        value={activeTab === 'acoes' ? newAcao.ticker : newRE.ticker} 
+                                        onChange={e => activeTab === 'acoes' ? setNewAcao({...newAcao, ticker: e.target.value}) : setNewRE({...newRE, ticker: e.target.value})} 
+                                        className="p-4 bg-slate-800 text-white rounded-xl outline-none font-bold placeholder:text-slate-600 text-sm" 
+                                    />
                                     <datalist id="tickers-list">{Object.keys(B3_NAMES).map(t => <option key={t} value={t}>{B3_NAMES[t]}</option>)}</datalist>
-                                    <input type="number" placeholder="Quantidade" value={newAcao.quantidade} onChange={e => setNewAcao({...newAcao, quantidade: e.target.value})} className="p-4 bg-slate-800 text-white rounded-xl outline-none font-bold placeholder:text-slate-600 text-sm" />
-                                    <input type="number" step="0.01" placeholder="Vlr Médio" value={newAcao.precoCompra} onChange={e => setNewAcao({...newAcao, precoCompra: e.target.value})} className="p-4 bg-slate-800 text-white rounded-xl outline-none font-bold placeholder:text-slate-600 text-sm" />
+                                    
+                                    <input 
+                                        type="number" placeholder="Quantidade" 
+                                        value={activeTab === 'acoes' ? newAcao.quantidade : newRE.quantidade} 
+                                        onChange={e => activeTab === 'acoes' ? setNewAcao({...newAcao, quantidade: e.target.value}) : setNewRE({...newRE, quantidade: e.target.value})} 
+                                        className="p-4 bg-slate-800 text-white rounded-xl outline-none font-bold placeholder:text-slate-600 text-sm" 
+                                    />
+                                    
+                                    <input 
+                                        type="number" step="0.01" placeholder="Vlr Compra" 
+                                        value={activeTab === 'acoes' ? newAcao.precoCompra : newRE.precoCompra} 
+                                        onChange={e => activeTab === 'acoes' ? setNewAcao({...newAcao, precoCompra: e.target.value}) : setNewRE({...newRE, precoCompra: e.target.value})} 
+                                        className="p-4 bg-slate-800 text-white rounded-xl outline-none font-bold placeholder:text-slate-600 text-sm" 
+                                    />
+                                    
                                     <button type="submit" className="bg-blue-600 text-white rounded-xl font-black uppercase text-xs tracking-widest hover:bg-blue-500 transition-colors">ADICIONAR</button>
                                 </form>
 
@@ -373,7 +402,7 @@
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {investments.acoes.map(a => {
+                                            {investments[activeTab].map(a => {
                                                 const totalCompra = a.quantidade * a.precoMedio;
                                                 const totalAtual = a.quantidade * a.precoAtual;
                                                 const lucroReal = totalAtual - totalCompra;
@@ -394,8 +423,8 @@
                                                         </td>
                                                         <td className="py-5 text-right">
                                                             <div className="flex justify-end gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                <button onClick={() => editAcao(a.id)} className="text-slate-400 hover:text-slate-900"><i data-lucide="edit-3" className="w-5 h-5"></i></button>
-                                                                <button onClick={() => updateData({ ...investments, acoes: investments.acoes.filter(x => x.id !== a.id) })} className="text-slate-400 hover:text-rose-600"><i data-lucide="trash-2" className="w-5 h-5"></i></button>
+                                                                <button onClick={() => editAsset(a.id, activeTab)} className="text-slate-400 hover:text-slate-900"><i data-lucide="edit-3" className="w-5 h-5"></i></button>
+                                                                <button onClick={() => updateData({ ...investments, [activeTab]: investments[activeTab].filter(x => x.id !== a.id) })} className="text-slate-400 hover:text-rose-600"><i data-lucide="trash-2" className="w-5 h-5"></i></button>
                                                             </div>
                                                         </td>
                                                     </tr>
@@ -407,12 +436,12 @@
                             </Card>
                         )}
 
-                        { (['realEstate', 'caixa', 'alternativos'].includes(activeTab)) && (
+                        {}
+                        { (['caixa', 'alternativos'].includes(activeTab)) && (
                             <Card className="animate-in">
                                 <div className="flex justify-between items-center mb-8">
                                     <h3 className="text-2xl font-black uppercase tracking-tight">
-                                        {activeTab === 'realEstate' ? 'Real Estate' : 
-                                         activeTab === 'caixa' ? 'Caixa' : 'Alternativos'}
+                                        {activeTab === 'caixa' ? 'Caixa' : 'Alternativos'}
                                     </h3>
                                     <button 
                                         onClick={() => {
@@ -454,7 +483,7 @@
                     </main>
 
                     <footer className="mt-20 pt-10 border-t border-slate-100 text-center opacity-30">
-                        <p className="text-[10px] font-black uppercase tracking-[0.4em]">IcaroInvest • Alpha Vantage API • v3.0</p>
+                        <p className="text-[10px] font-black uppercase tracking-[0.4em]">IcaroInvest • Alpha Vantage API • v4.0</p>
                     </footer>
                 </div>
             );
