@@ -26,6 +26,8 @@
         .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         .animate-in { animation: fadeIn 0.4s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        /* Adicionando ajuste para evitar quebra de valores */
+        .value-text { white-space: nowrap; letter-spacing: -0.02em; }
     </style>
 </head>
 <body>
@@ -67,19 +69,19 @@
         };
 
         const Card = ({ children, className = "" }) => (
-            <div className={`bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 ${className}`}>
+            <div className={`bg-white p-5 rounded-[2.5rem] shadow-sm border border-slate-100 ${className}`}>
                 {children}
             </div>
         );
 
         const StatCard = ({ title, value, iconName, colorClass }) => (
-            <Card className="flex items-center gap-4 hover:shadow-lg transition-all duration-300 min-w-0">
-                <div className={`p-4 rounded-2xl ${colorClass} text-white shadow-xl flex-shrink-0 flex items-center justify-center`}>
-                    <i data-lucide={iconName} className="w-6 h-6"></i>
+            <Card className="flex items-center gap-3 hover:shadow-lg transition-all duration-300 min-w-0">
+                <div className={`p-3 md:p-4 rounded-2xl ${colorClass} text-white shadow-xl flex-shrink-0 flex items-center justify-center`}>
+                    <i data-lucide={iconName} className="w-5 h-5 md:w-6 md:h-6"></i>
                 </div>
                 <div className="min-w-0 flex-1">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 whitespace-nowrap">{title}</p>
-                    <p className="text-lg md:text-xl font-black text-slate-900 break-words leading-tight">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 truncate">{title}</p>
+                    <p className="text-base md:text-lg font-black text-slate-900 leading-tight value-text">
                         {value}
                     </p>
                 </div>
