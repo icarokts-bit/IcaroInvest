@@ -30,9 +30,10 @@
         .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         .animate-in { animation: fadeIn 0.4s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .value-text { white-space: nowrap; letter-spacing: -0.02em; }
+        .value-text { white-space: nowrap; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
         input:focus { ring: 2px; ring-color: #2563eb; outline: none; }
-        .card-radius { border-radius: 2.5rem; }
+        .card-radius { border-radius: 2rem; }
+        .stat-card-min { min-width: 180px; }
     </style>
 </head>
 <body>
@@ -74,13 +75,13 @@
         );
 
         const StatCard = ({ title, value, iconName, colorClass }) => (
-            <Card className="flex items-center gap-4 hover:shadow-lg transition-all duration-300">
-                <div className={`p-4 rounded-2xl ${colorClass} text-white shadow-xl flex-shrink-0 flex items-center justify-center`}>
-                    <i data-lucide={iconName} className="w-6 h-6"></i>
+            <Card className="flex flex-col sm:flex-row items-center gap-3 hover:shadow-lg transition-all duration-300 min-h-[100px] py-4 px-5">
+                <div className={`p-3 rounded-2xl ${colorClass} text-white shadow-lg flex-shrink-0 flex items-center justify-center w-12 h-12`}>
+                    <i data-lucide={iconName} className="w-5 h-5"></i>
                 </div>
-                <div className="min-w-0">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1 truncate">{title}</p>
-                    <p className="text-lg md:text-xl font-black text-slate-900 leading-tight value-text">
+                <div className="min-w-0 flex-1 text-center sm:text-left overflow-hidden">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-0.5 truncate">{title}</p>
+                    <p className="text-base md:text-lg lg:text-xl font-black text-slate-900 leading-tight value-text truncate">
                         {value}
                     </p>
                 </div>
@@ -224,7 +225,6 @@
 
             return (
                 <div className="min-h-screen p-4 md:p-8 max-w-6xl mx-auto">
-                    {}
                     <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-12">
                         <div className="flex items-center gap-4">
                             <div className="bg-slate-900 p-4 rounded-3xl text-white shadow-2xl">
@@ -232,7 +232,7 @@
                             </div>
                             <div>
                                 <h1 className="text-2xl font-black uppercase tracking-tight text-slate-900">Icaro<span className="text-blue-600">Invest</span></h1>
-                                <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest leading-none mt-1">Brapi Cloud v2.2 - Fixed Sync</p>
+                                <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest leading-none mt-1">Brapi Cloud v2.5 - Sistema Padrão</p>
                             </div>
                         </div>
 
@@ -291,8 +291,8 @@
                                                     </PieChart>
                                                 </ResponsiveContainer>
                                             ) : (
-                                                <div className="h-full flex items-center justify-center text-slate-300 italic text-sm font-black uppercase tracking-widest">
-                                                    {!PieChart ? "Gráfico Indisponível" : "Sem ativos registrados"}
+                                                <div className="h-full flex items-center justify-center text-slate-300 italic text-sm font-black uppercase tracking-widest text-center px-10">
+                                                    Adicione ativos para visualizar o gráfico de alocação
                                                 </div>
                                             )}
                                         </div>
@@ -327,7 +327,7 @@
                                         <h3 className="text-2xl font-black uppercase tracking-tight">
                                             {activeTab === 'acoes' ? 'Carteira de Ações' : 'Fundos Imobiliários'}
                                         </h3>
-                                        <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Conexão Brapi.dev Ativa</p>
+                                        <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Sincronização Sequencial Brapi v2</p>
                                     </div>
                                     <button 
                                         onClick={() => syncCategory(activeTab)}
@@ -377,10 +377,10 @@
                                             <tr className="border-b border-slate-100 text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">
                                                 <th className="pb-6">Ativo</th>
                                                 <th className="pb-6 text-center">Qtd</th>
-                                                <th className="pb-6">P. Médio</th>
-                                                <th className="pb-6">P. Atual</th>
-                                                <th className="pb-6">Patrimônio</th>
-                                                <th className="pb-6">Lucro R$ / %</th>
+                                                <th className="pb-6 text-right">P. Médio</th>
+                                                <th className="pb-6 text-right">P. Atual</th>
+                                                <th className="pb-6 text-right">Patrimônio</th>
+                                                <th className="pb-6 text-right">Lucro R$ / %</th>
                                                 <th className="pb-6"></th>
                                             </tr>
                                         </thead>
@@ -397,17 +397,17 @@
                                                             <div className="text-[10px] text-slate-400 font-bold uppercase leading-none truncate max-w-[150px]">{a.nome}</div>
                                                         </td>
                                                         <td className="py-5 text-center font-bold text-slate-600">{a.quantidade}</td>
-                                                        <td className="py-5 text-sm font-medium text-slate-500">{formatBRL(a.precoMedio)}</td>
-                                                        <td className="py-5 font-black text-blue-600 leading-tight cursor-pointer hover:underline" onClick={() => {
+                                                        <td className="py-5 text-right font-medium text-slate-500 tabular-nums">{formatBRL(a.precoMedio)}</td>
+                                                        <td className="py-5 text-right font-black text-blue-600 leading-tight cursor-pointer hover:underline tabular-nums" onClick={() => {
                                                             const np = prompt("Novo Preço Atual:", a.precoAtual);
                                                             if (np) {
                                                                 const up = investments[activeTab].map(x => x.id === a.id ? {...x, precoAtual: Number(np)} : x);
                                                                 updateData({...investments, [activeTab]: up});
                                                             }
                                                         }}>{formatBRL(a.precoAtual)}</td>
-                                                        <td className="py-5 font-black text-slate-900 leading-tight">{formatBRL(totalAtual)}</td>
-                                                        <td className={`py-5 font-black text-sm ${lucroReal >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-                                                            <div className="leading-tight">{formatBRL(lucroReal)}</div>
+                                                        <td className="py-5 text-right font-black text-slate-900 leading-tight tabular-nums">{formatBRL(totalAtual)}</td>
+                                                        <td className={`py-5 text-right font-black text-sm ${lucroReal >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                                                            <div className="leading-tight value-text">{formatBRL(lucroReal)}</div>
                                                             <div className="text-[10px] uppercase opacity-70 mt-1">({lucroPct >= 0 ? '+' : ''}{lucroPct.toFixed(2)}%)</div>
                                                         </td>
                                                         <td className="py-5 text-right">
@@ -478,7 +478,7 @@
                     </main>
 
                     <footer className="mt-12 py-8 border-t border-slate-100 text-center opacity-40">
-                        <p className="text-[10px] font-black uppercase tracking-[0.4em]">IcaroInvest • Cloud System v2.2 • Brapi Sanitized Sync</p>
+                        <p className="text-[10px] font-black uppercase tracking-[0.4em]">IcaroInvest • Cloud System v2.5 • Brapi Standard Sync</p>
                     </footer>
                 </div>
             );
