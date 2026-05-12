@@ -25,15 +25,31 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap');
         body { font-family: 'Inter', sans-serif; background-color: #f8fafc; margin: 0; overflow-x: hidden; }
+        
         .custom-scroll::-webkit-scrollbar { width: 4px; height: 4px; }
         .custom-scroll::-webkit-scrollbar-track { background: transparent; }
         .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-        .animate-in { animation: fadeIn 0.4s ease-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .value-text { white-space: nowrap; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
-        input:focus { ring: 2px; ring-color: #2563eb; outline: none; }
-        .card-radius { border-radius: 2rem; }
-        .stat-card-min { min-width: 180px; }
+        
+        .value-text { 
+            white-space: nowrap; 
+            letter-spacing: -0.04em; 
+            font-variant-numeric: tabular-nums; 
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .card-radius { border-radius: 2.2rem; }
+        
+        /* Animação suave para mudanças de aba */
+        .animate-in { animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Ajuste para evitar quebra de valores monetários em telas pequenas */
+        .stat-value {
+            font-size: clamp(1rem, 4vw, 1.5rem);
+            font-weight: 900;
+            line-height: 1.2;
+        }
     </style>
 </head>
 <body>
@@ -45,8 +61,8 @@
         const RechartsObj = window.Recharts || {};
         const { PieChart, Pie, Cell, Legend, ResponsiveContainer, Tooltip } = RechartsObj;
 
+        // Configurações de API e Firebase
         const BRAPI_TOKEN = "pZapqBJxy1rE4pq3g4vy69";
-        
         const firebaseConfig = {
             apiKey: "AIzaSyBy8hqZtXZO6CsK45INpunruxbZtdbxJx4",
             authDomain: "icaro-investimentos.firebaseapp.com",
@@ -75,13 +91,13 @@
         );
 
         const StatCard = ({ title, value, iconName, colorClass }) => (
-            <Card className="flex flex-col sm:flex-row items-center gap-3 hover:shadow-lg transition-all duration-300 min-h-[100px] py-4 px-5">
-                <div className={`p-3 rounded-2xl ${colorClass} text-white shadow-lg flex-shrink-0 flex items-center justify-center w-12 h-12`}>
-                    <i data-lucide={iconName} className="w-5 h-5"></i>
+            <Card className="flex items-center gap-4 hover:shadow-md transition-all duration-300 min-h-[110px]">
+                <div className={`flex-shrink-0 p-3.5 rounded-2xl ${colorClass} text-white shadow-lg`}>
+                    <i data-lucide={iconName} className="w-6 h-6"></i>
                 </div>
-                <div className="min-w-0 flex-1 text-center sm:text-left overflow-hidden">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-0.5 truncate">{title}</p>
-                    <p className="text-base md:text-lg lg:text-xl font-black text-slate-900 leading-tight value-text truncate">
+                <div className="flex-1 min-w-0">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 truncate">{title}</p>
+                    <p className="stat-value text-slate-900 value-text">
                         {value}
                     </p>
                 </div>
@@ -114,10 +130,10 @@
                                 dbRef.current.set(INITIAL_DATA);
                             }
                             setLoading(false);
-                            setTimeout(() => lucide.createIcons(), 100);
+                            setTimeout(() => lucide.createIcons(), 150);
                         });
                     } catch (e) {
-                        console.error("Firebase Init Error:", e);
+                        console.error("Firebase Error:", e);
                         setLoading(false);
                     }
                 };
@@ -135,63 +151,39 @@
 
             const syncCategory = async (category) => {
                 const targetList = investments[category];
-                if (!targetList || targetList.length === 0) {
-                    setStatusMsg("Adicione ativos para sincronizar.");
-                    setTimeout(() => setStatusMsg(null), 3000);
-                    return;
-                }
+                if (!targetList || targetList.length === 0) return;
                 
                 setSyncing(true);
-                let updatedCount = 0;
                 const newList = [...targetList];
 
                 try {
                     for (let i = 0; i < newList.length; i++) {
                         const item = newList[i];
                         const tickerClean = item.ticker.split('.')[0].trim().toUpperCase();
-                        
-                        setStatusMsg(`Sincronizando ${tickerClean} (${i + 1}/${newList.length})...`);
+                        setStatusMsg(`Sincronizando ${tickerClean}...`);
                         
                         try {
-                            const response = await fetch(
-                                `https://brapi.dev/api/quote/${tickerClean}?modules=summaryProfile`,
-                                { 
-                                    headers: { 
-                                        "Authorization": `Bearer ${BRAPI_TOKEN}` 
-                                    } 
-                                }
-                            );
-                            
+                            const response = await fetch(`https://brapi.dev/api/quote/${tickerClean}`, { 
+                                headers: { "Authorization": `Bearer ${BRAPI_TOKEN}` } 
+                            });
                             const data = await response.json();
-                            
-                            if (data && data.results && data.results[0]) {
-                                const result = data.results[0];
-                                if (result.regularMarketPrice) {
-                                    newList[i] = { 
-                                        ...item, 
-                                        precoAtual: result.regularMarketPrice,
-                                        nome: result.shortName || item.nome
-                                    };
-                                    updatedCount++;
-                                }
+                            if (data?.results?.[0]?.regularMarketPrice) {
+                                newList[i] = { 
+                                    ...item, 
+                                    precoAtual: data.results[0].regularMarketPrice,
+                                    nome: data.results[0].shortName || item.nome
+                                };
                             }
-                            
-                            // Pequena pausa entre requisições para evitar bloqueio por excesso de velocidade
-                            await new Promise(resolve => setTimeout(resolve, 300));
-                            
-                        } catch (err) {
-                            console.error(`Erro ao sincronizar ${tickerClean}:`, err);
-                        }
+                            await new Promise(r => setTimeout(r, 350));
+                        } catch (err) { console.error(err); }
                     }
-
                     await updateData({ ...investments, [category]: newList });
-                    setStatusMsg(`Sucesso: ${updatedCount} ativos atualizados.`);
+                    setStatusMsg("Carteira Atualizada!");
                 } catch (err) {
-                    console.error("Erro geral na API:", err);
-                    setStatusMsg("Falha na conexão com a Brapi.");
+                    setStatusMsg("Erro na API.");
                 } finally {
                     setSyncing(false);
-                    setTimeout(() => setStatusMsg(null), 4000);
+                    setTimeout(() => setStatusMsg(null), 3000);
                 }
             };
 
@@ -201,8 +193,7 @@
                 const reSum = getSum(investments.realEstate);
                 const caixaSum = (investments.caixa || []).reduce((a, b) => a + Number(b.valor || 0), 0);
                 const altSum = (investments.alternativos || []).reduce((a, b) => a + Number(b.valor || 0), 0);
-                const total = acoesSum + reSum + caixaSum + altSum;
-                return { acoes: acoesSum, realEstate: reSum, caixa: caixaSum, alternativos: altSum, total };
+                return { acoes: acoesSum, realEstate: reSum, caixa: caixaSum, alternativos: altSum, total: acoesSum + reSum + caixaSum + altSum };
             }, [investments]);
 
             const allocationData = [
@@ -216,7 +207,7 @@
 
             if (loading) return (
                 <div className="h-screen flex items-center justify-center bg-slate-50">
-                    <div className="text-center">
+                    <div className="text-center animate-pulse">
                         <div className="w-12 h-12 border-4 border-slate-900 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
                         <p className="text-slate-400 font-black uppercase tracking-widest text-[10px]">Acessando Nuvem...</p>
                     </div>
@@ -224,19 +215,19 @@
             );
 
             return (
-                <div className="min-h-screen p-4 md:p-8 max-w-6xl mx-auto">
+                <div className="min-h-screen p-4 md:p-8 max-w-7xl mx-auto">
                     <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-12">
                         <div className="flex items-center gap-4">
                             <div className="bg-slate-900 p-4 rounded-3xl text-white shadow-2xl">
                                 <i data-lucide="shield-check" className="w-8 h-8"></i>
                             </div>
                             <div>
-                                <h1 className="text-2xl font-black uppercase tracking-tight text-slate-900">Icaro<span className="text-blue-600">Invest</span></h1>
-                                <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest leading-none mt-1">Brapi Cloud v2.5 - Sistema Padrão</p>
+                                <h1 className="text-2xl font-black uppercase tracking-tight text-slate-900 leading-none">Icaro<span className="text-blue-600">Invest</span></h1>
+                                <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mt-2">Sistema de Gestão Privada v2.8</p>
                             </div>
                         </div>
 
-                        <nav className="bg-white p-2 rounded-3xl shadow-sm border border-slate-200 flex overflow-x-auto gap-1 custom-scroll">
+                        <nav className="bg-white p-2 rounded-[2rem] shadow-sm border border-slate-100 flex overflow-x-auto gap-1 custom-scroll">
                             {[
                                 { id: 'dashboard', label: 'Dashboard', icon: 'layout-dashboard' },
                                 { id: 'acoes', label: 'Ações', icon: 'briefcase' },
@@ -264,22 +255,22 @@
                         </div>
                     )}
 
-                    <main className="space-y-6 pb-12">
-                        {}
+                    <main className="space-y-6">
                         { activeTab === 'dashboard' && (
                             <div className="space-y-6 animate-in">
+                                {}
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                                     <StatCard title="Patrimônio Total" value={formatBRL(totals.total)} iconName="trending-up" colorClass="bg-slate-900" />
                                     <StatCard title="Ações" value={formatBRL(totals.acoes)} iconName="briefcase" colorClass="bg-blue-600" />
-                                    <StatCard title="Real Estate" value={formatBRL(totals.realEstate)} iconName="emerald-600" colorClass="bg-emerald-600" />
+                                    <StatCard title="Real Estate" value={formatBRL(totals.realEstate)} iconName="home" colorClass="bg-emerald-600" />
                                     <StatCard title="Caixa" value={formatBRL(totals.caixa)} iconName="landmark" colorClass="bg-purple-600" />
                                     <StatCard title="Alternativos" value={formatBRL(totals.alternativos)} iconName="coins" colorClass="bg-rose-500" />
                                 </div>
 
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                    <Card>
-                                        <h3 className="text-sm font-black uppercase text-slate-800 mb-8 tracking-widest text-center">Alocação por Categoria</h3>
-                                        <div className="h-72">
+                                    <Card className="flex flex-col">
+                                        <h3 className="text-[11px] font-black uppercase text-slate-400 mb-8 tracking-[0.2em] text-center">Alocação Estratégica</h3>
+                                        <div className="h-72 flex-1">
                                             {PieChart && allocationData.length > 0 ? (
                                                 <ResponsiveContainer width="100%" height="100%">
                                                     <PieChart>
@@ -291,25 +282,25 @@
                                                     </PieChart>
                                                 </ResponsiveContainer>
                                             ) : (
-                                                <div className="h-full flex items-center justify-center text-slate-300 italic text-sm font-black uppercase tracking-widest text-center px-10">
-                                                    Adicione ativos para visualizar o gráfico de alocação
+                                                <div className="h-full flex items-center justify-center text-slate-300 font-bold uppercase text-[10px] tracking-widest text-center px-10">
+                                                    Sem dados para exibir
                                                 </div>
                                             )}
                                         </div>
                                     </Card>
 
                                     <Card>
-                                        <h3 className="text-sm font-black uppercase text-slate-800 mb-8 tracking-widest">Consolidado Percentual</h3>
+                                        <h3 className="text-[11px] font-black uppercase text-slate-400 mb-8 tracking-[0.2em]">Resumo por Categoria</h3>
                                         <div className="space-y-3">
                                             {allocationData.map((item, idx) => (
-                                                <div key={item.name} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                                                    <div className="flex items-center gap-3 font-bold text-sm text-slate-700">
-                                                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[idx % COLORS.length] }}></div>
-                                                        <span>{item.name}</span>
+                                                <div key={item.name} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 group hover:border-slate-200 transition-all">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-3 h-3 rounded-full shadow-sm" style={{ backgroundColor: COLORS[idx % COLORS.length] }}></div>
+                                                        <span className="text-sm font-black text-slate-700 uppercase tracking-tight">{item.name}</span>
                                                     </div>
                                                     <div className="text-right">
-                                                        <div className="font-black text-slate-900 leading-tight">{formatBRL(item.value)}</div>
-                                                        <div className="text-[10px] text-slate-400 font-black tracking-widest">{((item.value / (totals.total || 1)) * 100).toFixed(1)}%</div>
+                                                        <div className="font-black text-slate-900 leading-tight value-text">{formatBRL(item.value)}</div>
+                                                        <div className="text-[9px] text-slate-400 font-black tracking-widest mt-0.5">{((item.value / (totals.total || 1)) * 100).toFixed(1)}%</div>
                                                     </div>
                                                 </div>
                                             ))}
@@ -324,10 +315,10 @@
                             <Card className="animate-in">
                                 <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
                                     <div>
-                                        <h3 className="text-2xl font-black uppercase tracking-tight">
+                                        <h3 className="text-2xl font-black uppercase tracking-tight text-slate-900">
                                             {activeTab === 'acoes' ? 'Carteira de Ações' : 'Fundos Imobiliários'}
                                         </h3>
-                                        <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Sincronização Sequencial Brapi v2</p>
+                                        <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">Sincronização Brapi v2.0</p>
                                     </div>
                                     <button 
                                         onClick={() => syncCategory(activeTab)}
@@ -357,18 +348,18 @@
                                         updateData({ ...investments, [activeTab]: [...(investments[activeTab] || []), item] });
                                         setNewAsset({ ticker: '', quantidade: '', precoCompra: '' });
                                     }}
-                                    className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-10 p-8 bg-slate-900 rounded-[2.5rem]"
+                                    className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-10 p-6 bg-slate-900 rounded-[2.5rem] shadow-inner"
                                 >
                                     <input 
-                                        type="text" placeholder="Ticker (ex: PETR4)" list="tickers-list" 
+                                        type="text" placeholder="Ticker (Ex: PETR4)" list="tickers-list" 
                                         value={newAsset.ticker} 
                                         onChange={e => setNewAsset({...newAsset, ticker: e.target.value})} 
                                         className="p-4 bg-slate-800 text-white rounded-xl outline-none font-bold placeholder:text-slate-600 text-sm uppercase" 
                                     />
                                     <datalist id="tickers-list">{Object.keys(B3_NAMES).map(t => <option key={t} value={t}>{B3_NAMES[t]}</option>)}</datalist>
                                     <input type="number" placeholder="Quantidade" value={newAsset.quantidade} onChange={e => setNewAsset({...newAsset, quantidade: e.target.value})} className="p-4 bg-slate-800 text-white rounded-xl outline-none font-bold text-sm" />
-                                    <input type="number" step="0.01" placeholder="Preço Médio" value={newAsset.precoCompra} onChange={e => setNewAsset({...newAsset, precoCompra: e.target.value})} className="p-4 bg-slate-800 text-white rounded-xl outline-none font-bold text-sm" />
-                                    <button type="submit" className="bg-blue-600 text-white rounded-xl font-black uppercase text-xs tracking-widest hover:bg-blue-500 transition-colors">ADICIONAR</button>
+                                    <input type="number" step="0.01" placeholder="P. Médio" value={newAsset.precoCompra} onChange={e => setNewAsset({...newAsset, precoCompra: e.target.value})} className="p-4 bg-slate-800 text-white rounded-xl outline-none font-bold text-sm" />
+                                    <button type="submit" className="bg-blue-600 text-white rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-blue-500 transition-colors">Adicionar</button>
                                 </form>
 
                                 <div className="overflow-x-auto custom-scroll">
@@ -384,31 +375,31 @@
                                                 <th className="pb-6"></th>
                                             </tr>
                                         </thead>
-                                        <tbody>
+                                        <tbody className="divide-y divide-slate-50">
                                             {investments[activeTab].map(a => {
                                                 const totalCompra = a.quantidade * a.precoMedio;
                                                 const totalAtual = a.quantidade * a.precoAtual;
                                                 const lucroReal = totalAtual - totalCompra;
                                                 const lucroPct = ((a.precoAtual - a.precoMedio) / (a.precoMedio || 1)) * 100;
                                                 return (
-                                                    <tr key={a.id} className="border-b border-slate-50 hover:bg-slate-50 transition-all group">
+                                                    <tr key={a.id} className="hover:bg-slate-50/50 transition-all group">
                                                         <td className="py-5">
-                                                            <div className="font-black text-slate-900 leading-tight">{a.ticker}</div>
-                                                            <div className="text-[10px] text-slate-400 font-bold uppercase leading-none truncate max-w-[150px]">{a.nome}</div>
+                                                            <div className="font-black text-slate-900 text-sm leading-tight">{a.ticker}</div>
+                                                            <div className="text-[10px] text-slate-400 font-bold uppercase truncate max-w-[150px]">{a.nome}</div>
                                                         </td>
                                                         <td className="py-5 text-center font-bold text-slate-600">{a.quantidade}</td>
-                                                        <td className="py-5 text-right font-medium text-slate-500 tabular-nums">{formatBRL(a.precoMedio)}</td>
-                                                        <td className="py-5 text-right font-black text-blue-600 leading-tight cursor-pointer hover:underline tabular-nums" onClick={() => {
+                                                        <td className="py-5 text-right font-medium text-slate-500 value-text">{formatBRL(a.precoMedio)}</td>
+                                                        <td className="py-5 text-right font-black text-blue-600 leading-tight cursor-pointer hover:underline value-text" onClick={() => {
                                                             const np = prompt("Novo Preço Atual:", a.precoAtual);
                                                             if (np) {
                                                                 const up = investments[activeTab].map(x => x.id === a.id ? {...x, precoAtual: Number(np)} : x);
                                                                 updateData({...investments, [activeTab]: up});
                                                             }
                                                         }}>{formatBRL(a.precoAtual)}</td>
-                                                        <td className="py-5 text-right font-black text-slate-900 leading-tight tabular-nums">{formatBRL(totalAtual)}</td>
-                                                        <td className={`py-5 text-right font-black text-sm ${lucroReal >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                                                        <td className="py-5 text-right font-black text-slate-900 leading-tight value-text">{formatBRL(totalAtual)}</td>
+                                                        <td className={`py-5 text-right font-black text-xs ${lucroReal >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
                                                             <div className="leading-tight value-text">{formatBRL(lucroReal)}</div>
-                                                            <div className="text-[10px] uppercase opacity-70 mt-1">({lucroPct >= 0 ? '+' : ''}{lucroPct.toFixed(2)}%)</div>
+                                                            <div className="text-[9px] uppercase opacity-70 mt-1">({lucroPct >= 0 ? '+' : ''}{lucroPct.toFixed(2)}%)</div>
                                                         </td>
                                                         <td className="py-5 text-right">
                                                             <div className="flex justify-end gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -419,8 +410,8 @@
                                                                         const up = investments[activeTab].map(x => x.id === a.id ? {...x, quantidade: Number(nq), precoMedio: Number(nm)} : x);
                                                                         updateData({...investments, [activeTab]: up});
                                                                     }
-                                                                }} className="text-slate-400 hover:text-slate-900"><i data-lucide="edit-3" className="w-5 h-5"></i></button>
-                                                                <button onClick={() => updateData({ ...investments, [activeTab]: investments[activeTab].filter(x => x.id !== a.id) })} className="text-slate-400 hover:text-rose-600"><i data-lucide="trash-2" className="w-5 h-5"></i></button>
+                                                                }} className="text-slate-300 hover:text-slate-900"><i data-lucide="edit-3" className="w-5 h-5"></i></button>
+                                                                <button onClick={() => updateData({ ...investments, [activeTab]: investments[activeTab].filter(x => x.id !== a.id) })} className="text-slate-300 hover:text-rose-600"><i data-lucide="trash-2" className="w-5 h-5"></i></button>
                                                             </div>
                                                         </td>
                                                     </tr>
@@ -432,13 +423,15 @@
                             </Card>
                         )}
 
-                        {}
                         { (['caixa', 'alternativos'].includes(activeTab)) && (
                             <Card className="animate-in">
                                 <div className="flex justify-between items-center mb-8">
-                                    <h3 className="text-2xl font-black uppercase tracking-tight">
-                                        {activeTab === 'caixa' ? 'Reserva de Caixa' : 'Ativos Alternativos'}
-                                    </h3>
+                                    <div>
+                                        <h3 className="text-2xl font-black uppercase tracking-tight text-slate-900">
+                                            {activeTab === 'caixa' ? 'Reserva de Caixa' : 'Ativos Alternativos'}
+                                        </h3>
+                                        <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">Gestão Manual de Liquidez</p>
+                                    </div>
                                     <button 
                                         onClick={() => {
                                             const nome = window.prompt("Nome do Lançamento:");
@@ -450,15 +443,15 @@
                                         }}
                                         className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-black text-[10px] tracking-widest hover:bg-black shadow-xl"
                                     >
-                                        NOVO LANÇAMENTO
+                                        Novo Lançamento
                                     </button>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     {(investments[activeTab] || []).map(item => (
-                                        <div key={item.id} className="flex justify-between items-center p-6 bg-slate-50 rounded-[2.5rem] border border-slate-100 group hover:border-slate-300 transition-all">
-                                            <span className="font-black text-slate-800 text-sm uppercase tracking-tight">{item.nome}</span>
+                                        <div key={item.id} className="flex justify-between items-center p-6 bg-slate-50 rounded-[2.2rem] border border-slate-100 group hover:border-slate-300 transition-all">
+                                            <span className="font-black text-slate-700 text-xs uppercase tracking-tight">{item.nome}</span>
                                             <div className="flex items-center gap-6">
-                                                <span className="font-black text-slate-900 text-xl">{formatBRL(item.valor)}</span>
+                                                <span className="font-black text-slate-900 text-lg value-text">{formatBRL(item.valor)}</span>
                                                 <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
                                                     <button onClick={() => {
                                                         const nv = prompt("Novo Valor:", item.valor);
@@ -466,7 +459,7 @@
                                                             const up = investments[activeTab].map(x => x.id === item.id ? {...x, valor: Number(nv)} : x);
                                                             updateData({...investments, [activeTab]: up});
                                                         }
-                                                    }} className="text-slate-400 hover:text-slate-900"><i data-lucide="edit-3" className="w-4 h-4"></i></button>
+                                                    }} className="text-slate-300 hover:text-slate-900"><i data-lucide="edit-3" className="w-4 h-4"></i></button>
                                                     <button onClick={() => updateData({ ...investments, [activeTab]: investments[activeTab].filter(x => x.id !== item.id) })} className="text-slate-300 hover:text-rose-600 transition-all"><i data-lucide="trash-2" className="w-4 h-4"></i></button>
                                                 </div>
                                             </div>
@@ -477,8 +470,8 @@
                         )}
                     </main>
 
-                    <footer className="mt-12 py-8 border-t border-slate-100 text-center opacity-40">
-                        <p className="text-[10px] font-black uppercase tracking-[0.4em]">IcaroInvest • Cloud System v2.5 • Brapi Standard Sync</p>
+                    <footer className="mt-16 py-10 border-t border-slate-100 text-center opacity-40">
+                        <p className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-400">IcaroInvest • Cloud System v2.8 • Brapi Secure Sync</p>
                     </footer>
                 </div>
             );
