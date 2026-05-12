@@ -73,13 +73,15 @@
         );
 
         const StatCard = ({ title, value, iconName, colorClass }) => (
-            <Card className="flex items-center gap-4 hover:shadow-lg transition-all duration-300">
-                <div className={`p-4 rounded-2xl ${colorClass} text-white shadow-xl flex items-center justify-center`}>
+            <Card className="flex items-center gap-4 hover:shadow-lg transition-all duration-300 min-w-0">
+                <div className={`p-4 rounded-2xl ${colorClass} text-white shadow-xl flex-shrink-0 flex items-center justify-center`}>
                     <i data-lucide={iconName} className="w-6 h-6"></i>
                 </div>
-                <div className="overflow-hidden">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{title}</p>
-                    <p className="text-xl font-black text-slate-900 truncate">{value}</p>
+                <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 whitespace-nowrap">{title}</p>
+                    <p className="text-lg md:text-xl font-black text-slate-900 break-words leading-tight">
+                        {value}
+                    </p>
                 </div>
             </Card>
         );
@@ -273,7 +275,7 @@
                         {}
                         { activeTab === 'dashboard' && (
                             <div className="space-y-6 animate-in">
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
                                     <StatCard title="Patrimônio Total" value={formatBRL(totals.total)} iconName="trending-up" colorClass="bg-slate-900" />
                                     <StatCard title="Ações" value={formatBRL(totals.acoes)} iconName="briefcase" colorClass="bg-blue-600" />
                                     <StatCard title="Real Estate" value={formatBRL(totals.realEstate)} iconName="emerald-600" colorClass="bg-emerald-600" />
