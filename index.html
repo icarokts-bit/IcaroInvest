@@ -135,10 +135,14 @@
 
             const syncCategory = async (category) => {
                 const targetList = investments[category];
-                if (!targetList || targetList.length === 0) return;
+                if (!targetList || targetList.length === 0) {
+                    setStatusMsg("Adicione ativos para sincronizar.");
+                    setTimeout(() => setStatusMsg(null), 3000);
+                    return;
+                }
                 
                 setSyncing(true);
-                setStatusMsg(`Sincronizando ${category.toUpperCase()} com Brapi...`);
+                setStatusMsg(`Consultando B3 para ${category === 'acoes' ? 'Ações' : 'FIIs'}...`);
                 
                 const tickers = targetList
                     .map(item => item.ticker.split('.')[0].trim().toUpperCase())
@@ -147,7 +151,11 @@
                 try {
                     const response = await fetch(
                         `https://brapi.dev/api/quote/${tickers}?modules=summaryProfile`,
-                        { headers: { "Authorization": `Bearer ${BRAPI_TOKEN}` } }
+                        { 
+                            headers: { 
+                                "Authorization": `Bearer ${BRAPI_TOKEN}` 
+                            } 
+                        }
                     );
                     
                     const data = await response.json();
@@ -157,19 +165,25 @@
                             const cleanTicker = item.ticker.split('.')[0].toUpperCase();
                             const result = data.results.find(r => r.symbol.toUpperCase() === cleanTicker);
                             
-                            return result ? { 
-                                ...item, 
-                                precoAtual: result.regularMarketPrice,
-                                nome: result.shortName || item.nome
-                            } : item;
+                            if (result) {
+                                return { 
+                                    ...item, 
+                                    precoAtual: result.regularMarketPrice, // Atualiza a coluna P. Atual
+                                    nome: result.shortName || item.nome
+                                };
+                            }
+                            return item;
                         });
                         
+                        // Salva no estado e no Firebase
                         await updateData({ ...investments, [category]: updatedList });
-                        setStatusMsg("Patrimônio atualizado com sucesso!");
+                        setStatusMsg("Preços atualizados com sucesso!");
+                    } else {
+                        setStatusMsg("Ativo não encontrado na B3.");
                     }
                 } catch (err) {
-                    console.error(err);
-                    setStatusMsg("Erro de conexão com a API.");
+                    console.error("Erro API:", err);
+                    setStatusMsg("Falha na conexão com a Brapi.");
                 } finally {
                     setSyncing(false);
                     setTimeout(() => setStatusMsg(null), 3000);
