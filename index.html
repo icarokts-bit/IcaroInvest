@@ -1,9 +1,129 @@
-<!-- ... existing code ... -->
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IcaroInvest - Gestão Patrimonial</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
+    <script src="https://unpkg.com/recharts@2.12.2/umd/Recharts.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap" rel="stylesheet">
+
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #0f172a; overflow-x: hidden; }
+        .card-radius { border-radius: 2.5rem; }
+        .custom-scroll::-webkit-scrollbar { height: 4px; width: 4px; }
+        .custom-scroll::-webkit-scrollbar-track { background: #f1f5f9; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .animate-in { animation: fadeIn 0.4s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .value-text { font-variant-numeric: tabular-nums; letter-spacing: -0.02em; white-space: nowrap; }
+        .stat-card-title { font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.1em; color: #94a3b8; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo, useRef } = React;
+        const { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } = window.Recharts;
+
         const COLORS = ['#0f172a', '#2563eb', '#059669', '#7c3aed', '#db2777', '#0891b2'];
         const INITIAL_DATA = { acoes: [], realEstate: [], caixa: [], alternativos: [] };
 
+        const FIREBASE_CONFIG = {
+            apiKey: "AIzaSyBy8hqZtXZO6CsK45INpunruxbZtdbxJx4",
+            authDomain: "icaro-investimentos.firebaseapp.com",
+            projectId: "icaro-investimentos",
+            storageBucket: "icaro-investimentos.firebasestorage.app",
+            messagingSenderId: "45341061429",
+            appId: "1:45341061429:web:85b89c414110de4c4e9c7c"
+        };
+
+        const BRAPI_TOKEN = "pZapqBJxy1rE4pq3g4vy69";
+
         const StatCard = ({ title, value, iconName, colorClass, isApp }) => (
-<!-- ... existing code ... -->
+            <div className={`bg-white p-5 card-radius shadow-sm border border-slate-100 flex items-center gap-4 transition-all hover:shadow-md min-w-0`}>
+                <div className={`p-3 rounded-2xl ${colorClass} text-white shadow-lg flex-shrink-0`}>
+                    <i data-lucide={iconName} className="w-5 h-5"></i>
+                </div>
+                <div className="min-w-0 overflow-hidden">
+                    <p className="stat-card-title mb-1 truncate">{title}</p>
+                    <p className="font-black text-slate-900 leading-none value-text text-lg md:text-xl">
+                        {value}
+                    </p>
+                </div>
+            </div>
+        );
+
+        const App = () => {
+            const [investments, setInvestments] = useState(INITIAL_DATA);
+            const [activeTab, setActiveTab] = useState('dashboard');
+            const [syncing, setSyncing] = useState(false);
+            const [loading, setLoading] = useState(true);
+            const [isApp, setIsApp] = useState(false);
+            const dbRef = useRef(null);
+
+            useEffect(() => {
+                const checkEnv = () => {
+                    setIsApp(window.innerWidth < 768 || window.matchMedia('(display-mode: standalone)').matches);
+                };
+                checkEnv();
+                window.addEventListener('resize', checkEnv);
+
+                const initFirebase = async () => {
+                    try {
+                        if (!window.firebase) {
+                            const scripts = [
+                                "https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js",
+                                "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"
+                            ];
+                            for (const src of scripts) {
+                                await new Promise(r => {
+                                    const s = document.createElement("script");
+                                    s.src = src; s.onload = r; document.head.appendChild(s);
+                                });
+                            }
+                        }
+                        if (!window.firebase.apps.length) window.firebase.initializeApp(FIREBASE_CONFIG);
+                        const db = window.firebase.firestore();
+                        dbRef.current = db.collection("investments").doc("portfolio_principal_v3");
+                        
+                        dbRef.current.onSnapshot(doc => {
+                            if (doc.exists) {
+                                const data = doc.data();
+                                // Garantir que todas as chaves existam para evitar abas brancas
+                                setInvestments({
+                                    acoes: data.acoes || [],
+                                    realEstate: data.realEstate || [],
+                                    caixa: data.caixa || [],
+                                    alternativos: data.alternativos || []
+                                });
+                            }
+                            setLoading(false);
+                            setTimeout(() => lucide.createIcons(), 100);
+                        });
+                    } catch (e) {
+                        console.error("Firebase Error:", e);
+                        setLoading(false);
+                    }
+                };
+                initFirebase();
+                return () => window.removeEventListener('resize', checkEnv);
+            }, []);
+
+            const updateData = async (newData) => {
+                setInvestments(newData);
+                if (dbRef.current) await dbRef.current.set(newData);
+                setTimeout(() => lucide.createIcons(), 100);
+            };
+
             const totals = useMemo(() => {
                 const getSum = (arr) => (arr || []).reduce((a, b) => a + (Number(b.quantidade || 1) * Number(b.precoAtual || b.valorAtual || b.valor || 0)), 0);
                 const acoes = getSum(investments.acoes);
@@ -15,41 +135,59 @@
 
             const formatBRL = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
 
+            const syncCategory = async (cat) => {
+                const list = investments[cat] || [];
+                if (list.length === 0) return;
+                setSyncing(true);
+                try {
+                    const newList = [...list];
+                    for (let item of newList) {
+                        if (!item.ticker) continue;
+                        const ticker = item.ticker.split('.')[0];
+                        try {
+                            const res = await fetch(`https://brapi.dev/api/quote/${ticker}`, {
+                                headers: { 'Authorization': `Bearer ${BRAPI_TOKEN}` }
+                            });
+                            const data = await res.json();
+                            if (data.results?.[0]) {
+                                item.precoAtual = data.results[0].regularMarketPrice;
+                                item.nome = data.results[0].shortName;
+                            }
+                        } catch (err) { console.error(`Erro ao sincronizar ${ticker}`); }
+                    }
+                    await updateData({ ...investments, [cat]: newList });
+                } catch (e) { console.error(e); }
+                setSyncing(false);
+            };
+
             const renderCaixaSection = () => (
                 <div className="bg-white p-6 card-radius shadow-sm border border-slate-100 animate-in">
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
                         <div>
                             <h2 className="text-xl font-black uppercase text-slate-900 leading-none">Reserva e Caixa</h2>
-                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-2">Gestão de Renda Fixa e Liquidez</p>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-2">Gestão de Renda Fixa e Liquidez</p>
                         </div>
                         <button 
                             onClick={() => {
-                                const nome = window.prompt("Nome da Aplicação (ex: CDB Banco Inter):");
+                                const nome = window.prompt("Nome da Aplicação (ex: CDB Inter):");
                                 const valorAplicado = window.prompt("Valor Aplicado (R$):");
                                 const valorAtual = window.prompt("Valor Atualizado (R$):");
                                 if (nome && valorAplicado && valorAtual) {
-                                  const newItem = { 
-                                    id: Date.now(), 
-                                    nome, 
-                                    valorAplicado: Number(valorAplicado), 
-                                    valorAtual: Number(valorAtual) 
-                                  };
-                                  updateData({ ...investments, caixa: [...(investments.caixa || []), newItem] });
+                                    const newItem = { id: Date.now(), nome, valorAplicado: Number(valorAplicado), valorAtual: Number(valorAtual) };
+                                    updateData({ ...investments, caixa: [...(investments.caixa || []), newItem] });
                                 }
                             }}
-                            className="flex items-center gap-2 px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest bg-slate-900 text-white shadow-lg hover:bg-slate-800 transition-all"
+                            className="flex items-center gap-2 px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest bg-slate-900 text-white shadow-lg"
                         >
-                            <i data-lucide="plus" className="w-3 h-3"></i>
-                            Novo Lançamento
+                            <i data-lucide="plus" className="w-3 h-3"></i> Novo Lançamento
                         </button>
                     </div>
-
                     <div className="overflow-x-auto custom-scroll -mx-6 px-6">
-                        <table className="w-full text-left min-w-[600px]">
+                        <table className="w-full text-left min-w-[700px]">
                             <thead>
                                 <tr className="border-b border-slate-100 text-[10px] font-black uppercase text-slate-400 tracking-widest">
                                     <th className="pb-4">Aplicação</th>
-                                    <th className="pb-4 text-right">Vlr Aplicado</th>
+                                    <th className="pb-4 text-right">Aplicado</th>
                                     <th className="pb-4 text-right">Vlr Atual</th>
                                     <th className="pb-4 text-right">Rendimento</th>
                                     <th className="pb-4 text-right">Lucro %</th>
@@ -59,40 +197,32 @@
                             <tbody className="divide-y divide-slate-50">
                                 {(investments.caixa || []).map(item => {
                                     const lucro = item.valorAtual - item.valorAplicado;
-                                    const lucroPct = (lucro / (item.valorAplicado || 1)) * 100;
+                                    const pct = (lucro / (item.valorAplicado || 1)) * 100;
                                     return (
                                         <tr key={item.id} className="group">
                                             <td className="py-4">
-                                                <div className="font-black text-slate-900 text-sm uppercase tracking-tight">{item.nome}</div>
-                                                <div className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Renda Fixa</div>
+                                                <div className="font-black text-slate-900 text-sm uppercase">{item.nome}</div>
                                             </td>
-                                            <td className="py-4 text-right font-medium text-slate-400 text-sm value-text">{formatBRL(item.valorAplicado)}</td>
-                                            <td className="py-4 text-right font-black text-slate-900 text-lg value-text">{formatBRL(item.valorAtual)}</td>
-                                            <td className={`py-4 text-right font-black text-xs ${lucro >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                                            <td className="py-4 text-right font-bold text-slate-400 text-sm value-text">{formatBRL(item.valorAplicado)}</td>
+                                            <td className="py-4 text-right font-black text-slate-900 text-lg value-text text-blue-600">{formatBRL(item.valorAtual)}</td>
+                                            <td className={`py-4 text-right font-black text-sm value-text ${lucro >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
                                                 {formatBRL(lucro)}
                                             </td>
-                                            <td className={`py-4 text-right font-black text-xs ${lucroPct >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-                                                {lucroPct.toFixed(2)}%
+                                            <td className={`py-4 text-right font-black text-xs ${lucro >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                                                {pct.toFixed(2)}%
                                             </td>
                                             <td className="py-4 text-right">
-                                                <div className="flex gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <button 
-                                                        onClick={() => {
-                                                            const nA = window.prompt("Novo Valor Aplicado:", item.valorAplicado);
-                                                            const nU = window.prompt("Novo Valor Atual:", item.valorAtual);
-                                                            if(nA && nU) {
-                                                                const newList = investments.caixa.map(i => i.id === item.id ? {...i, valorAplicado: Number(nA), valorAtual: Number(nU)} : i);
-                                                                updateData({...investments, caixa: newList});
-                                                            }
-                                                        }}
-                                                        className="p-2 text-blue-500 hover:bg-blue-50 rounded-xl"
-                                                    >
+                                                <div className="flex justify-end gap-2">
+                                                    <button onClick={() => {
+                                                        const nVal = window.prompt("Novo Valor Atual:", item.valorAtual);
+                                                        if(nVal) {
+                                                            const newList = investments.caixa.map(x => x.id === item.id ? {...x, valorAtual: Number(nVal)} : x);
+                                                            updateData({...investments, caixa: newList});
+                                                        }
+                                                    }} className="p-2 text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity">
                                                         <i data-lucide="edit-3" className="w-4 h-4"></i>
                                                     </button>
-                                                    <button 
-                                                        onClick={() => updateData({ ...investments, caixa: investments.caixa.filter(x => x.id !== item.id) })}
-                                                        className="p-2 text-rose-500 hover:bg-rose-50 rounded-xl"
-                                                    >
+                                                    <button onClick={() => updateData({ ...investments, caixa: investments.caixa.filter(x => x.id !== item.id) })} className="p-2 text-rose-500 opacity-0 group-hover:opacity-100 transition-opacity">
                                                         <i data-lucide="trash-2" className="w-4 h-4"></i>
                                                     </button>
                                                 </div>
@@ -102,27 +232,242 @@
                                 })}
                             </tbody>
                         </table>
-                        {(!investments.caixa || investments.caixa.length === 0) && (
-                            <div className="py-20 text-center border-2 border-dashed border-slate-100 rounded-[2rem] mt-4">
-                                <p className="text-slate-300 font-black uppercase text-[10px] tracking-[0.3em]">Nenhum caixa cadastrado</p>
-                            </div>
-                        )}
+                        {(investments.caixa || []).length === 0 && <div className="py-10 text-center text-slate-300 font-bold uppercase text-[10px] tracking-[0.2em]">Nenhuma aplicação cadastrada</div>}
                     </div>
                 </div>
             );
 
             const renderManualSection = (category, label) => (
-<!-- ... existing code ... -->
-                        { activeTab === 'acoes' && (
-<!-- ... existing code ... -->
+                <div className="bg-white p-6 card-radius shadow-sm border border-slate-100 animate-in">
+                    <div className="flex justify-between items-center mb-8">
+                        <div>
+                            <h2 className="text-xl font-black uppercase text-slate-900">{label}</h2>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Gestão de Outros Ativos</p>
+                        </div>
+                        <button 
+                            onClick={() => {
+                                const nome = window.prompt("Nome do Ativo:");
+                                const valor = window.prompt("Valor Atual (R$):");
+                                if(nome && valor) {
+                                    const newItem = { id: Date.now(), nome, valor: Number(valor) };
+                                    updateData({...investments, [category]: [...(investments[category] || []), newItem]});
+                                }
+                            }}
+                            className="bg-slate-900 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg"
+                        >
+                            ADICIONAR ATIVO
+                        </button>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {(investments[category] || []).map(item => (
+                            <div key={item.id} className="flex justify-between items-center p-5 bg-slate-50 rounded-3xl border border-slate-100 group">
+                                <div>
+                                    <div className="font-black text-slate-800 text-sm uppercase tracking-tight">{item.nome}</div>
+                                    <div className="text-[9px] text-slate-400 font-bold uppercase">{category}</div>
+                                </div>
+                                <div className="flex items-center gap-4">
+                                    <span className="font-black text-slate-900 text-lg value-text">{formatBRL(item.valor)}</span>
+                                    <button onClick={() => updateData({...investments, [category]: (investments[category] || []).filter(x => x.id !== item.id)})} className="text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <i data-lucide="trash-2" className="w-4 h-4"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    {(investments[category] || []).length === 0 && <div className="py-20 text-center border-2 border-dashed border-slate-50 rounded-[2.5rem] text-slate-300 font-bold uppercase text-[10px] tracking-[0.2em]">Sem registros</div>}
+                </div>
+            );
+
+            if (loading) return (
+                <div className="h-screen flex flex-col items-center justify-center bg-slate-900 text-white">
+                    <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+                    <p className="font-black uppercase tracking-[0.3em] text-[10px] animate-pulse">Sincronizando Cloud...</p>
+                </div>
+            );
+
+            return (
+                <div className="min-h-screen p-4 md:p-8 max-w-7xl mx-auto pb-20">
+                    <header className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 mb-12">
+                        <div className="flex items-center gap-4">
+                            <div className="bg-slate-900 p-4 rounded-[2rem] text-white shadow-2xl">
+                                <i data-lucide="wallet" className="w-8 h-8"></i>
+                            </div>
+                            <div>
+                                <h1 className="text-3xl font-black uppercase tracking-tight text-slate-900 leading-none">Icaro<span className="text-blue-600">Invest</span></h1>
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-2 mt-2">
+                                    <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span> {isApp ? 'App Mode' : 'Dashboard Mode'}
+                                </p>
+                            </div>
+                        </div>
+
+                        <nav className="bg-white p-2 card-radius shadow-xl border border-slate-100 flex overflow-x-auto custom-scroll gap-1">
+                            {[
+                                { id: 'dashboard', label: 'Resumo', icon: 'layout-dashboard' },
+                                { id: 'acoes', label: 'Ações', icon: 'briefcase' },
+                                { id: 'realEstate', label: 'Real Estate', icon: 'home' },
+                                { id: 'caixa', label: 'Caixa', icon: 'landmark' },
+                                { id: 'alternativos', label: 'Alt', icon: 'coins' }
+                            ].map(tab => (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setActiveTab(tab.id)}
+                                    className={`flex items-center gap-2 px-5 py-3 rounded-[1.5rem] text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${
+                                        activeTab === tab.id ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'
+                                    }`}
+                                >
+                                    <i data-lucide={tab.icon} className="w-4 h-4"></i> {tab.label}
+                                </button>
+                            ))}
+                        </nav>
+                    </header>
+
+                    <main className="space-y-8">
+                        {}
+                        { activeTab === 'dashboard' && (
+                            <div className="space-y-8 animate-in">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                                    <StatCard title="Patrimônio Total" value={formatBRL(totals.total)} iconName="trending-up" colorClass="bg-slate-900" />
+                                    <StatCard title="Ações" value={formatBRL(totals.acoes)} iconName="briefcase" colorClass="bg-blue-600" />
+                                    <StatCard title="Real Estate" value={formatBRL(totals.re)} iconName="home" colorClass="bg-emerald-600" />
+                                    <StatCard title="Caixa" value={formatBRL(totals.caixa)} iconName="landmark" colorClass="bg-purple-600" />
+                                    <StatCard title="Alternativos" value={formatBRL(totals.alt)} iconName="coins" colorClass="bg-rose-500" />
+                                </div>
+                                
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                    <div className="bg-white p-8 card-radius shadow-sm border border-slate-100 flex flex-col items-center">
+                                        <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 mb-8 w-full text-center">Alocação de Ativos</h3>
+                                        <div className="w-full h-80">
+                                            <ResponsiveContainer>
+                                                <PieChart>
+                                                    <Pie 
+                                                        data={[
+                                                            { name: 'Ações', value: totals.acoes },
+                                                            { name: 'RE', value: totals.re },
+                                                            { name: 'Caixa', value: totals.caixa },
+                                                            { name: 'Alt', value: totals.alt }
+                                                        ].filter(v => v.value > 0)}
+                                                        innerRadius={80} outerRadius={110} paddingAngle={8} dataKey="value" stroke="none" cornerRadius={6}
+                                                    >
+                                                        {COLORS.map((c, i) => <Cell key={i} fill={c} />)}
+                                                    </Pie>
+                                                    <Tooltip formatter={(v) => formatBRL(v)} />
+                                                </PieChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                    </div>
+                                    <div className="bg-white p-8 card-radius shadow-sm border border-slate-100">
+                                        <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 mb-8">Resumo Consolidado</h3>
+                                        <div className="space-y-4">
+                                            {[
+                                                { label: 'Ações', value: totals.acoes, color: COLORS[1] },
+                                                { label: 'Real Estate', value: totals.re, color: COLORS[2] },
+                                                { label: 'Reserva e Caixa', value: totals.caixa, color: COLORS[3] },
+                                                { label: 'Alternativos', value: totals.alt, color: COLORS[4] }
+                                            ].map(item => (
+                                                <div key={item.label} className="flex justify-between items-center p-5 bg-slate-50 rounded-3xl border border-slate-100">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }}></div>
+                                                        <span className="text-sm font-bold text-slate-700">{item.label}</span>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <div className="font-black text-slate-900 value-text">{formatBRL(item.value)}</div>
+                                                        <div className="text-[9px] text-slate-400 font-black tracking-widest uppercase">
+                                                            {((item.value / (totals.total || 1)) * 100).toFixed(1)}%
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         )}
 
-                        { activeTab === 'realEstate' && (
+                        {}
+                        { activeTab === 'acoes' && (
                             <div className="bg-white p-6 card-radius shadow-sm border border-slate-100 animate-in">
                                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
                                     <div>
+                                        <h2 className="text-xl font-black uppercase text-slate-900 leading-none">Carteira de Ações</h2>
+                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-2 text-emerald-600">Conexão B3 Ativa</p>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button 
+                                            onClick={() => {
+                                                const ticker = window.prompt("Ticker (ex: PETR4):");
+                                                const qtd = window.prompt("Quantidade:");
+                                                const precoMedio = window.prompt("Preço Médio:");
+                                                if(ticker && qtd && precoMedio) {
+                                                    const newItem = { id: Date.now(), ticker: ticker.toUpperCase(), quantidade: Number(qtd), precoMedio: Number(precoMedio), precoAtual: Number(precoMedio) };
+                                                    updateData({...investments, acoes: [...(investments.acoes || []), newItem]});
+                                                }
+                                            }}
+                                            className="flex items-center gap-2 px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest bg-slate-900 text-white shadow-lg"
+                                        >
+                                            <i data-lucide="plus" className="w-3 h-3"></i> ADICIONAR
+                                        </button>
+                                        <button onClick={() => syncCategory('acoes')} disabled={syncing} className="bg-emerald-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase shadow-lg disabled:opacity-50">
+                                            {syncing ? 'Sincronizando...' : 'Atualizar Preços'}
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="overflow-x-auto custom-scroll -mx-6 px-6">
+                                    <table className="w-full text-left min-w-[800px]">
+                                        <thead>
+                                            <tr className="border-b border-slate-100 text-[10px] font-black uppercase text-slate-400 tracking-widest">
+                                                <th className="pb-4">Ativo</th>
+                                                <th className="pb-4 text-center">Qtd</th>
+                                                <th className="pb-4 text-right">P. Médio</th>
+                                                <th className="pb-4 text-right">P. Atual</th>
+                                                <th className="pb-4 text-right">Patrimônio</th>
+                                                <th className="pb-4 text-right">Lucro R$</th>
+                                                <th className="pb-4 text-right">Lucro %</th>
+                                                <th className="pb-4"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-50">
+                                            {(investments.acoes || []).map(a => {
+                                                const total = a.quantidade * a.precoAtual;
+                                                const lucroReal = total - (a.quantidade * a.precoMedio);
+                                                const lucroPct = (lucroReal / (a.quantidade * a.precoMedio || 1)) * 100;
+                                                return (
+                                                    <tr key={a.id} className="group hover:bg-slate-50/50">
+                                                        <td className="py-4">
+                                                            <div className="font-black text-slate-900 text-sm">{a.ticker}</div>
+                                                            <div className="text-[9px] text-slate-400 font-bold uppercase">{a.nome || 'Ação B3'}</div>
+                                                        </td>
+                                                        <td className="py-4 text-center font-bold text-slate-600 text-sm">{a.quantidade}</td>
+                                                        <td className="py-4 text-right font-medium text-slate-400 text-sm value-text">{formatBRL(a.precoMedio)}</td>
+                                                        <td className="py-4 text-right font-black text-blue-600 text-sm value-text">{formatBRL(a.precoAtual)}</td>
+                                                        <td className="py-4 text-right font-black text-slate-900 text-sm value-text">{formatBRL(total)}</td>
+                                                        <td className={`py-4 text-right font-black text-xs value-text ${lucroReal >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                                                            {formatBRL(lucroReal)}
+                                                        </td>
+                                                        <td className={`py-4 text-right font-black text-xs ${lucroReal >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                                                            {lucroPct.toFixed(2)}%
+                                                        </td>
+                                                        <td className="py-4 text-right">
+                                                            <button onClick={() => updateData({...investments, acoes: investments.acoes.filter(x => x.id !== a.id)})} className="text-slate-200 hover:text-rose-500 transition-colors">
+                                                                <i data-lucide="trash-2" className="w-4 h-4"></i>
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                    {(investments.acoes || []).length === 0 && <div className="py-20 text-center text-slate-300 font-bold uppercase text-[10px] tracking-[0.2em]">Sua carteira está vazia</div>}
+                                </div>
+                            </div>
+                        )}
+
+                        {}
+                        { activeTab === 'realEstate' && (
+                             <div className="bg-white p-6 card-radius shadow-sm border border-slate-100 animate-in">
+                                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+                                    <div>
                                         <h2 className="text-xl font-black uppercase text-slate-900 leading-none">Fundos Imobiliários</h2>
-                                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-2">Sincronização Ativa B3 (Brapi)</p>
+                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-2 text-emerald-600">Sincronização IFIX</p>
                                     </div>
                                     <div className="flex gap-2">
                                         <button 
@@ -132,28 +477,20 @@
                                                 const precoMedio = window.prompt("Preço Médio:");
                                                 if(ticker && qtd && precoMedio) {
                                                     const newItem = { id: Date.now(), ticker: ticker.toUpperCase(), quantidade: Number(qtd), precoMedio: Number(precoMedio), precoAtual: Number(precoMedio) };
-                                                    updateData({...investments, realEstate: [...investments.realEstate, newItem]});
+                                                    updateData({...investments, realEstate: [...(investments.realEstate || []), newItem]});
                                                 }
                                             }}
                                             className="flex items-center gap-2 px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest bg-slate-900 text-white shadow-lg"
                                         >
-                                            <i data-lucide="plus" className="w-3 h-3"></i> Adicionar
+                                            <i data-lucide="plus" className="w-3 h-3"></i> ADICIONAR
                                         </button>
-                                        <button 
-                                            onClick={() => syncCategory('realEstate')}
-                                            disabled={syncing}
-                                            className={`flex items-center gap-2 px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                                                syncing ? 'bg-slate-100 text-slate-300' : 'bg-emerald-600 text-white shadow-lg'
-                                            }`}
-                                        >
-                                            <i data-lucide="refresh-cw" className={`w-3 h-3 ${syncing ? 'animate-spin' : ''}`}></i>
-                                            {syncing ? 'Sincronizando...' : 'Sincronizar B3'}
+                                        <button onClick={() => syncCategory('realEstate')} disabled={syncing} className="bg-emerald-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase shadow-lg disabled:opacity-50">
+                                            {syncing ? 'Sincronizando...' : 'Atualizar Preços'}
                                         </button>
                                     </div>
                                 </div>
-
                                 <div className="overflow-x-auto custom-scroll -mx-6 px-6">
-                                    <table className="w-full text-left min-w-[700px]">
+                                    <table className="w-full text-left min-w-[800px]">
                                         <thead>
                                             <tr className="border-b border-slate-100 text-[10px] font-black uppercase text-slate-400 tracking-widest">
                                                 <th className="pb-4">Ativo</th>
@@ -161,51 +498,43 @@
                                                 <th className="pb-4 text-right">P. Médio</th>
                                                 <th className="pb-4 text-right">P. Atual</th>
                                                 <th className="pb-4 text-right">Patrimônio</th>
+                                                <th className="pb-4 text-right">Lucro R$</th>
                                                 <th className="pb-4 text-right">Lucro %</th>
                                                 <th className="pb-4"></th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-50">
-                                            {investments.realEstate.map(a => {
-                                                const lucroPct = ((a.precoAtual - a.precoMedio) / (a.precoMedio || 1)) * 100;
+                                            {(investments.realEstate || []).map(a => {
+                                                const total = a.quantidade * a.precoAtual;
+                                                const lucroReal = total - (a.quantidade * a.precoMedio);
+                                                const lucroPct = (lucroReal / (a.quantidade * a.precoMedio || 1)) * 100;
                                                 return (
-                                                    <tr key={a.id} className="group">
+                                                    <tr key={a.id} className="group hover:bg-slate-50/50">
                                                         <td className="py-4">
                                                             <div className="font-black text-slate-900 text-sm">{a.ticker}</div>
-                                                            <div className="text-[9px] text-slate-400 font-bold uppercase">{a.nome || 'Ativo B3'}</div>
+                                                            <div className="text-[9px] text-slate-400 font-bold uppercase">{a.nome || 'FII B3'}</div>
                                                         </td>
                                                         <td className="py-4 text-center font-bold text-slate-600 text-sm">{a.quantidade}</td>
                                                         <td className="py-4 text-right font-medium text-slate-400 text-sm value-text">{formatBRL(a.precoMedio)}</td>
                                                         <td className="py-4 text-right font-black text-blue-600 text-sm value-text">{formatBRL(a.precoAtual)}</td>
-                                                        <td className="py-4 text-right font-black text-slate-900 text-sm value-text">{formatBRL(a.quantidade * a.precoAtual)}</td>
-                                                        <td className={`py-4 text-right font-black text-xs ${lucroPct >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                                                        <td className="py-4 text-right font-black text-slate-900 text-sm value-text">{formatBRL(total)}</td>
+                                                        <td className={`py-4 text-right font-black text-xs value-text ${lucroReal >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                                                            {formatBRL(lucroReal)}
+                                                        </td>
+                                                        <td className={`py-4 text-right font-black text-xs ${lucroReal >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
                                                             {lucroPct.toFixed(2)}%
                                                         </td>
                                                         <td className="py-4 text-right">
-                                                            <div className="flex gap-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                <button 
-                                                                    onClick={() => {
-                                                                        const nQ = window.prompt("Nova Qtd:", a.quantidade);
-                                                                        const nP = window.prompt("Novo Preço Médio:", a.precoMedio);
-                                                                        if(nQ && nP) {
-                                                                            const nl = investments.realEstate.map(x => x.id === a.id ? {...x, quantidade: Number(nQ), precoMedio: Number(nP)} : x);
-                                                                            updateData({...investments, realEstate: nl});
-                                                                        }
-                                                                    }}
-                                                                    className="p-2 text-blue-500 hover:bg-blue-50 rounded-xl"
-                                                                >
-                                                                    <i data-lucide="edit-3" className="w-4 h-4"></i>
-                                                                </button>
-                                                                <button onClick={() => updateData({ ...investments, realEstate: investments.realEstate.filter(x => x.id !== a.id) })} className="p-2 text-rose-500 hover:bg-rose-50 rounded-xl">
-                                                                    <i data-lucide="trash-2" className="w-4 h-4"></i>
-                                                                </button>
-                                                            </div>
+                                                            <button onClick={() => updateData({...investments, realEstate: investments.realEstate.filter(x => x.id !== a.id)})} className="text-slate-200 hover:text-rose-500 transition-colors">
+                                                                <i data-lucide="trash-2" className="w-4 h-4"></i>
+                                                            </button>
                                                         </td>
                                                     </tr>
                                                 );
                                             })}
                                         </tbody>
                                     </table>
+                                    {(investments.realEstate || []).length === 0 && <div className="py-20 text-center text-slate-300 font-bold uppercase text-[10px] tracking-[0.2em]">Sem ativos cadastrados</div>}
                                 </div>
                             </div>
                         )}
@@ -213,4 +542,16 @@
                         { activeTab === 'caixa' && renderCaixaSection() }
                         { activeTab === 'alternativos' && renderManualSection('alternativos', 'Ativos Alternativos') }
                     </main>
-<!-- ... existing code ... -->
+
+                    <footer className="mt-20 py-10 border-t border-slate-100 text-center">
+                        <p className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-300">IcaroInvest Digital Management &copy; 2026</p>
+                    </footer>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
