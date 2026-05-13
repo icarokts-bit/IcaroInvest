@@ -1,557 +1,439 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-PT">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IcaroInvest - Gestão Patrimonial</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
-    <script src="https://unpkg.com/recharts@2.12.2/umd/Recharts.js"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
     
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap" rel="stylesheet">
-
     <style>
-        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #0f172a; overflow-x: hidden; }
-        .card-radius { border-radius: 2.5rem; }
-        .custom-scroll::-webkit-scrollbar { height: 4px; width: 4px; }
-        .custom-scroll::-webkit-scrollbar-track { background: #f1f5f9; }
-        .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-        .animate-in { animation: fadeIn 0.4s ease-out; }
+        :root { --primary: #2563eb; --bg: #f8fafc; }
+        body { font-family: 'Inter', sans-serif; background-color: var(--bg); color: #1e293b; margin: 0; padding: 0; }
+        .rounded-premium { border-radius: 2rem; }
+        .glass { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border: 1px solid rgba(226, 232, 240, 0.8); }
+        .tabular { font-variant-numeric: tabular-nums; }
+        .text-huge { font-size: clamp(1.1rem, 4vw, 1.6rem); line-height: 1.2; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .value-text { font-variant-numeric: tabular-nums; letter-spacing: -0.02em; white-space: nowrap; }
-        .stat-card-title { font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.1em; color: #94a3b8; }
+        .animate-in { animation: fadeIn 0.4s ease-out forwards; }
     </style>
 </head>
 <body>
-    <div id="root"></div>
+    <div id="root">
+        <div class="flex items-center justify-center min-h-screen">
+            <div class="text-center">
+                <div class="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">A sincronizar com a nuvem...</p>
+            </div>
+        </div>
+    </div>
 
-    <script type="text/babel">
-        const { useState, useEffect, useMemo, useRef } = React;
-        const { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } = window.Recharts;
+    <script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
+    <script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-        const COLORS = ['#0f172a', '#2563eb', '#059669', '#7c3aed', '#db2777', '#0891b2'];
-        const INITIAL_DATA = { acoes: [], realEstate: [], caixa: [], alternativos: [] };
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
 
-        const FIREBASE_CONFIG = {
+        const firebaseConfig = {
             apiKey: "AIzaSyBy8hqZtXZO6CsK45INpunruxbZtdbxJx4",
             authDomain: "icaro-investimentos.firebaseapp.com",
             projectId: "icaro-investimentos",
             storageBucket: "icaro-investimentos.firebasestorage.app",
             messagingSenderId: "45341061429",
-            appId: "1:45341061429:web:85b89c414110de4c4e9c7c"
+            appId: "1:45341061429:web:85b89c414110de4c4e9c7c",
+            measurementId: "G-Z8FZGVKK8W"
         };
 
-        const BRAPI_TOKEN = "pZapqBJxy1rE4pq3g4vy69";
+        try {
+            const app = initializeApp(firebaseConfig);
+            const db = getFirestore(app);
+            const auth = getAuth(app);
+            window.firebaseAPI = { db, doc, setDoc, onSnapshot, auth, signInAnonymously, onAuthStateChanged };
+        } catch (e) { console.error("Firebase Fail:", e); }
+    </script>
 
-        const StatCard = ({ title, value, iconName, colorClass, isApp }) => (
-            <div className={`bg-white p-5 card-radius shadow-sm border border-slate-100 flex items-center gap-4 transition-all hover:shadow-md min-w-0`}>
-                <div className={`p-3 rounded-2xl ${colorClass} text-white shadow-lg flex-shrink-0`}>
-                    <i data-lucide={iconName} className="w-5 h-5"></i>
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+        const { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } = window.Recharts;
+
+        const BRAPI_TOKEN = "pZapqBJxy1rE4pq3g4vy69";
+        const COLORS = ['#0f172a', '#2563eb', '#10b981', '#8b5cf6', '#f43f5e', '#f59e0b'];
+
+        const LucideIcon = ({ name, size = 20, className = "" }) => {
+            const [ready, setReady] = useState(false);
+            useEffect(() => { if (window.lucide) { setReady(true); window.lucide.createIcons(); } }, [name]);
+            return ready ? <i data-lucide={name} style={{ width: size, height: size }} className={className}></i> : <div style={{ width: size, height: size }}></div>;
+        };
+
+        const StatCard = ({ title, value, icon, colorClass, isMobile }) => (
+            <div className={`glass p-6 rounded-premium flex ${isMobile ? 'flex-col items-start gap-2' : 'items-center gap-5'} min-w-0 shadow-sm hover:shadow-md transition-all`}>
+                <div className={`${colorClass} p-4 rounded-3xl text-white shadow-lg flex-shrink-0`}>
+                    <LucideIcon name={icon} size={28} />
                 </div>
-                <div className="min-w-0 overflow-hidden">
-                    <p className="stat-card-title mb-1 truncate">{title}</p>
-                    <p className="font-black text-slate-900 leading-none value-text text-lg md:text-xl">
-                        {value}
-                    </p>
+                <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">{title}</p>
+                    <h3 className="text-huge font-black text-slate-900 tabular truncate">{value}</h3>
                 </div>
             </div>
         );
 
         const App = () => {
-            const [investments, setInvestments] = useState(INITIAL_DATA);
             const [activeTab, setActiveTab] = useState('dashboard');
-            const [syncing, setSyncing] = useState(false);
-            const [loading, setLoading] = useState(true);
-            const [isApp, setIsApp] = useState(false);
-            const dbRef = useRef(null);
+            const [investments, setInvestments] = useState({ acoes: [], realEstate: [], caixa: [], alternativos: [] });
+            const [syncStatus, setSyncStatus] = useState("");
+            const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
             useEffect(() => {
-                const checkEnv = () => {
-                    setIsApp(window.innerWidth < 768 || window.matchMedia('(display-mode: standalone)').matches);
-                };
-                checkEnv();
-                window.addEventListener('resize', checkEnv);
-
-                const initFirebase = async () => {
-                    try {
-                        if (!window.firebase) {
-                            const scripts = [
-                                "https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js",
-                                "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"
-                            ];
-                            for (const src of scripts) {
-                                await new Promise(r => {
-                                    const s = document.createElement("script");
-                                    s.src = src; s.onload = r; document.head.appendChild(s);
-                                });
-                            }
-                        }
-                        if (!window.firebase.apps.length) window.firebase.initializeApp(FIREBASE_CONFIG);
-                        const db = window.firebase.firestore();
-                        dbRef.current = db.collection("investments").doc("portfolio_principal_v3");
-                        
-                        dbRef.current.onSnapshot(doc => {
-                            if (doc.exists) {
-                                const data = doc.data();
-                                // Garantir que todas as chaves existam para evitar abas brancas
-                                setInvestments({
-                                    acoes: data.acoes || [],
-                                    realEstate: data.realEstate || [],
-                                    caixa: data.caixa || [],
-                                    alternativos: data.alternativos || []
-                                });
-                            }
-                            setLoading(false);
-                            setTimeout(() => lucide.createIcons(), 100);
-                        });
-                    } catch (e) {
-                        console.error("Firebase Error:", e);
-                        setLoading(false);
-                    }
-                };
-                initFirebase();
-                return () => window.removeEventListener('resize', checkEnv);
+                const handleResize = () => setIsMobile(window.innerWidth < 768);
+                window.addEventListener('resize', handleResize);
+                return () => window.removeEventListener('resize', handleResize);
             }, []);
 
-            const updateData = async (newData) => {
-                setInvestments(newData);
-                if (dbRef.current) await dbRef.current.set(newData);
-                setTimeout(() => lucide.createIcons(), 100);
+            useEffect(() => {
+                if (!window.firebaseAPI) return;
+                const { auth, signInAnonymously, onAuthStateChanged, db, doc, onSnapshot } = window.firebaseAPI;
+
+                signInAnonymously(auth).catch(console.error);
+
+                const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        const docRef = doc(db, 'investments', 'portfolio_principal');
+                        const unsubscribeData = onSnapshot(docRef, (snap) => {
+                            if (snap.exists()) setInvestments(snap.data());
+                        });
+                        return () => unsubscribeData();
+                    }
+                });
+                return () => unsubscribeAuth();
+            }, []);
+
+            const save = async (newData) => {
+                if (!window.firebaseAPI) return;
+                const { db, doc, setDoc } = window.firebaseAPI;
+                await setDoc(doc(db, 'investments', 'portfolio_principal'), newData);
             };
 
             const totals = useMemo(() => {
-                const getSum = (arr) => (arr || []).reduce((a, b) => a + (Number(b.quantidade || 1) * Number(b.precoAtual || b.valorAtual || b.valor || 0)), 0);
+                const getSum = (arr) => (arr || []).reduce((acc, curr) => {
+                    const preco = Number(curr.precoAtual || curr.valorAtual || curr.valor || 0);
+                    const qtd = Number(curr.quantidade || 1);
+                    return acc + (preco * qtd);
+                }, 0);
+
                 const acoes = getSum(investments.acoes);
                 const re = getSum(investments.realEstate);
-                const caixa = (investments.caixa || []).reduce((a, b) => a + Number(b.valorAtual || 0), 0);
-                const alt = (investments.alternativos || []).reduce((a, b) => a + Number(b.valor || 0), 0);
+                const caixa = (investments.caixa || []).reduce((acc, curr) => acc + Number(curr.valorAtual || curr.valor || 0), 0);
+                const alt = getSum(investments.alternativos);
+                
                 return { acoes, re, caixa, alt, total: acoes + re + caixa + alt };
             }, [investments]);
 
-            const formatBRL = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
+            const format = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
 
-            const syncCategory = async (cat) => {
-                const list = investments[cat] || [];
+            const sync = async (category) => {
+                const list = [...(investments[category] || [])];
                 if (list.length === 0) return;
-                setSyncing(true);
-                try {
-                    const newList = [...list];
-                    for (let item of newList) {
-                        if (!item.ticker) continue;
-                        const ticker = item.ticker.split('.')[0];
-                        try {
-                            const res = await fetch(`https://brapi.dev/api/quote/${ticker}`, {
-                                headers: { 'Authorization': `Bearer ${BRAPI_TOKEN}` }
-                            });
-                            const data = await res.json();
-                            if (data.results?.[0]) {
-                                item.precoAtual = data.results[0].regularMarketPrice;
-                                item.nome = data.results[0].shortName;
-                            }
-                        } catch (err) { console.error(`Erro ao sincronizar ${ticker}`); }
-                    }
-                    await updateData({ ...investments, [cat]: newList });
-                } catch (e) { console.error(e); }
-                setSyncing(false);
+
+                setSyncStatus(`Sincronizando ativos...`);
+                for (let i = 0; i < list.length; i++) {
+                    const t = list[i].ticker.split('.')[0].trim().toUpperCase();
+                    setSyncStatus(`A atualizar ${t} (${i+1}/${list.length})...`);
+                    try {
+                        const res = await fetch(`https://brapi.dev/api/quote/${t}`, { headers: { 'Authorization': `Bearer ${BRAPI_TOKEN}` } });
+                        const d = await res.json();
+                        if (d.results?.[0]) list[i].precoAtual = d.results[0].regularMarketPrice;
+                        await new Promise(r => setTimeout(r, 400));
+                    } catch (e) { console.error(e); }
+                }
+                const updated = { ...investments, [category]: list };
+                setInvestments(updated);
+                save(updated);
+                setSyncStatus("Patrimônio Atualizado!");
+                setTimeout(() => setSyncStatus(""), 2000);
             };
 
-            const renderCaixaSection = () => (
-                <div className="bg-white p-6 card-radius shadow-sm border border-slate-100 animate-in">
-                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
-                        <div>
-                            <h2 className="text-xl font-black uppercase text-slate-900 leading-none">Reserva e Caixa</h2>
-                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-2">Gestão de Renda Fixa e Liquidez</p>
-                        </div>
-                        <button 
-                            onClick={() => {
-                                const nome = window.prompt("Nome da Aplicação (ex: CDB Inter):");
-                                const valorAplicado = window.prompt("Valor Aplicado (R$):");
-                                const valorAtual = window.prompt("Valor Atualizado (R$):");
-                                if (nome && valorAplicado && valorAtual) {
-                                    const newItem = { id: Date.now(), nome, valorAplicado: Number(valorAplicado), valorAtual: Number(valorAtual) };
-                                    updateData({ ...investments, caixa: [...(investments.caixa || []), newItem] });
-                                }
-                            }}
-                            className="flex items-center gap-2 px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest bg-slate-900 text-white shadow-lg"
-                        >
-                            <i data-lucide="plus" className="w-3 h-3"></i> Novo Lançamento
-                        </button>
-                    </div>
-                    <div className="overflow-x-auto custom-scroll -mx-6 px-6">
-                        <table className="w-full text-left min-w-[700px]">
-                            <thead>
-                                <tr className="border-b border-slate-100 text-[10px] font-black uppercase text-slate-400 tracking-widest">
-                                    <th className="pb-4">Aplicação</th>
-                                    <th className="pb-4 text-right">Aplicado</th>
-                                    <th className="pb-4 text-right">Vlr Atual</th>
-                                    <th className="pb-4 text-right">Rendimento</th>
-                                    <th className="pb-4 text-right">Lucro %</th>
-                                    <th className="pb-4"></th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-50">
-                                {(investments.caixa || []).map(item => {
-                                    const lucro = item.valorAtual - item.valorAplicado;
-                                    const pct = (lucro / (item.valorAplicado || 1)) * 100;
-                                    return (
-                                        <tr key={item.id} className="group">
-                                            <td className="py-4">
-                                                <div className="font-black text-slate-900 text-sm uppercase">{item.nome}</div>
-                                            </td>
-                                            <td className="py-4 text-right font-bold text-slate-400 text-sm value-text">{formatBRL(item.valorAplicado)}</td>
-                                            <td className="py-4 text-right font-black text-slate-900 text-lg value-text text-blue-600">{formatBRL(item.valorAtual)}</td>
-                                            <td className={`py-4 text-right font-black text-sm value-text ${lucro >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-                                                {formatBRL(lucro)}
-                                            </td>
-                                            <td className={`py-4 text-right font-black text-xs ${lucro >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-                                                {pct.toFixed(2)}%
-                                            </td>
-                                            <td className="py-4 text-right">
-                                                <div className="flex justify-end gap-2">
-                                                    <button onClick={() => {
-                                                        const nVal = window.prompt("Novo Valor Atual:", item.valorAtual);
-                                                        if(nVal) {
-                                                            const newList = investments.caixa.map(x => x.id === item.id ? {...x, valorAtual: Number(nVal)} : x);
-                                                            updateData({...investments, caixa: newList});
-                                                        }
-                                                    }} className="p-2 text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        <i data-lucide="edit-3" className="w-4 h-4"></i>
-                                                    </button>
-                                                    <button onClick={() => updateData({ ...investments, caixa: investments.caixa.filter(x => x.id !== item.id) })} className="p-2 text-rose-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        <i data-lucide="trash-2" className="w-4 h-4"></i>
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                        {(investments.caixa || []).length === 0 && <div className="py-10 text-center text-slate-300 font-bold uppercase text-[10px] tracking-[0.2em]">Nenhuma aplicação cadastrada</div>}
-                    </div>
-                </div>
-            );
+            const add = (cat) => {
+                let item = { id: Date.now().toString() };
+                if (cat === 'caixa') {
+                    const n = prompt("Nome da Aplicação:");
+                    const va = prompt("Valor Aplicado (R$):");
+                    const vt = prompt("Valor Atual Hoje (R$):");
+                    if (!n || !va) return;
+                    item = { ...item, nome: n, valorAplicado: Number(va), valorAtual: Number(vt || va) };
+                } else if (cat === 'alternativos') {
+                    const n = prompt("Nome do Ativo:");
+                    const v = prompt("Valor Estimado (R$):");
+                    if (!n || !v) return;
+                    item = { ...item, nome: n, valor: Number(v), precoAtual: Number(v), quantidade: 1 };
+                } else {
+                    const t = prompt("Ticker:");
+                    const q = prompt("Quantidade:");
+                    const p = prompt("Preço Médio:");
+                    if (!t || !q) return;
+                    item = { ...item, ticker: t.toUpperCase(), quantidade: Number(q), precoMedio: Number(p), precoAtual: Number(p) };
+                }
+                const updated = { ...investments, [cat]: [...(investments[cat] || []), item] };
+                setInvestments(updated);
+                save(updated);
+            };
 
-            const renderManualSection = (category, label) => (
-                <div className="bg-white p-6 card-radius shadow-sm border border-slate-100 animate-in">
-                    <div className="flex justify-between items-center mb-8">
-                        <div>
-                            <h2 className="text-xl font-black uppercase text-slate-900">{label}</h2>
-                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Gestão de Outros Ativos</p>
-                        </div>
-                        <button 
-                            onClick={() => {
-                                const nome = window.prompt("Nome do Ativo:");
-                                const valor = window.prompt("Valor Atual (R$):");
-                                if(nome && valor) {
-                                    const newItem = { id: Date.now(), nome, valor: Number(valor) };
-                                    updateData({...investments, [category]: [...(investments[category] || []), newItem]});
-                                }
-                            }}
-                            className="bg-slate-900 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg"
-                        >
-                            ADICIONAR ATIVO
-                        </button>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {(investments[category] || []).map(item => (
-                            <div key={item.id} className="flex justify-between items-center p-5 bg-slate-50 rounded-3xl border border-slate-100 group">
-                                <div>
-                                    <div className="font-black text-slate-800 text-sm uppercase tracking-tight">{item.nome}</div>
-                                    <div className="text-[9px] text-slate-400 font-bold uppercase">{category}</div>
-                                </div>
-                                <div className="flex items-center gap-4">
-                                    <span className="font-black text-slate-900 text-lg value-text">{formatBRL(item.valor)}</span>
-                                    <button onClick={() => updateData({...investments, [category]: (investments[category] || []).filter(x => x.id !== item.id)})} className="text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <i data-lucide="trash-2" className="w-4 h-4"></i>
-                                    </button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                    {(investments[category] || []).length === 0 && <div className="py-20 text-center border-2 border-dashed border-slate-50 rounded-[2.5rem] text-slate-300 font-bold uppercase text-[10px] tracking-[0.2em]">Sem registros</div>}
-                </div>
-            );
+            const editItem = (cat, id) => {
+                const list = [...(investments[cat] || [])];
+                const index = list.findIndex(i => i.id === id);
+                if (index === -1) return;
 
-            if (loading) return (
-                <div className="h-screen flex flex-col items-center justify-center bg-slate-900 text-white">
-                    <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-                    <p className="font-black uppercase tracking-[0.3em] text-[10px] animate-pulse">Sincronizando Cloud...</p>
-                </div>
-            );
+                const item = list[index];
+                if (cat === 'caixa') {
+                    const va = prompt("Novo Valor Aplicado:", item.valorAplicado);
+                    const vt = prompt("Novo Valor Atual:", item.valorAtual);
+                    if (va && vt) {
+                        list[index] = { ...item, valorAplicado: Number(va), valorAtual: Number(vt) };
+                    }
+                } else if (cat === 'alternativos') {
+                    const v = prompt("Novo Valor Estimado:", item.valor);
+                    if (v) {
+                        list[index] = { ...item, valor: Number(v), precoAtual: Number(v) };
+                    }
+                } else {
+                    const q = prompt("Nova Quantidade:", item.quantidade);
+                    const p = prompt("Novo Preço Médio:", item.precoMedio);
+                    if (q && p) {
+                        list[index] = { ...item, quantidade: Number(q), precoMedio: Number(p) };
+                    }
+                }
+
+                const updated = { ...investments, [cat]: list };
+                setInvestments(updated);
+                save(updated);
+            };
+
+            const removeItem = (cat, id) => {
+                if (!confirm("Deseja realmente excluir este item?")) return;
+                const updated = { ...investments, [cat]: (investments[cat] || []).filter(i => i.id !== id) };
+                setInvestments(updated);
+                save(updated);
+            };
+
+            const chartData = useMemo(() => [
+                { name: 'Ações', value: totals.acoes },
+                { name: 'Real Estate', value: totals.re },
+                { name: 'Caixa', value: totals.caixa },
+                { name: 'Alternativos', value: totals.alt }
+            ].filter(d => d.value > 0), [totals]);
 
             return (
-                <div className="min-h-screen p-4 md:p-8 max-w-7xl mx-auto pb-20">
-                    <header className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 mb-12">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-32">
+                    <header className="py-10 flex flex-col md:flex-row justify-between items-center gap-8">
                         <div className="flex items-center gap-4">
-                            <div className="bg-slate-900 p-4 rounded-[2rem] text-white shadow-2xl">
-                                <i data-lucide="wallet" className="w-8 h-8"></i>
+                            <div className="bg-slate-900 text-white p-4 rounded-[2rem] shadow-2xl">
+                                <LucideIcon name="ShieldCheck" size={32} />
                             </div>
                             <div>
-                                <h1 className="text-3xl font-black uppercase tracking-tight text-slate-900 leading-none">Icaro<span className="text-blue-600">Invest</span></h1>
-                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-2 mt-2">
-                                    <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span> {isApp ? 'App Mode' : 'Dashboard Mode'}
-                                </p>
+                                <h1 className="text-3xl font-black tracking-tighter leading-none uppercase">ICARO<span className="text-blue-600">INVEST</span></h1>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1">Management Elite v4.1</p>
                             </div>
                         </div>
 
-                        <nav className="bg-white p-2 card-radius shadow-xl border border-slate-100 flex overflow-x-auto custom-scroll gap-1">
+                        <nav className="flex bg-white p-2 rounded-[1.5rem] shadow-xl border border-slate-100 overflow-x-auto no-scrollbar max-w-full">
                             {[
-                                { id: 'dashboard', label: 'Resumo', icon: 'layout-dashboard' },
-                                { id: 'acoes', label: 'Ações', icon: 'briefcase' },
-                                { id: 'realEstate', label: 'Real Estate', icon: 'home' },
-                                { id: 'caixa', label: 'Caixa', icon: 'landmark' },
-                                { id: 'alternativos', label: 'Alt', icon: 'coins' }
-                            ].map(tab => (
+                                { id: 'dashboard', icon: 'LayoutDashboard', label: 'Início' },
+                                { id: 'acoes', icon: 'TrendingUp', label: 'Ações' },
+                                { id: 'realEstate', icon: 'Home', label: 'RE' },
+                                { id: 'caixa', icon: 'Landmark', label: 'Caixa' },
+                                { id: 'alternativos', icon: 'Layers', label: 'Alt' }
+                            ].map(t => (
                                 <button
-                                    key={tab.id}
-                                    onClick={() => setActiveTab(tab.id)}
-                                    className={`flex items-center gap-2 px-5 py-3 rounded-[1.5rem] text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${
-                                        activeTab === tab.id ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'
+                                    key={t.id}
+                                    onClick={() => setActiveTab(t.id)}
+                                    className={`flex items-center gap-2 px-6 py-3 rounded-2xl text-[10px] font-black transition-all whitespace-nowrap uppercase tracking-widest ${
+                                        activeTab === t.id ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'
                                     }`}
                                 >
-                                    <i data-lucide={tab.icon} className="w-4 h-4"></i> {tab.label}
+                                    <LucideIcon name={t.icon} size={14} /> {t.label}
                                 </button>
                             ))}
                         </nav>
                     </header>
 
-                    <main className="space-y-8">
-                        {}
-                        { activeTab === 'dashboard' && (
-                            <div className="space-y-8 animate-in">
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-                                    <StatCard title="Patrimônio Total" value={formatBRL(totals.total)} iconName="trending-up" colorClass="bg-slate-900" />
-                                    <StatCard title="Ações" value={formatBRL(totals.acoes)} iconName="briefcase" colorClass="bg-blue-600" />
-                                    <StatCard title="Real Estate" value={formatBRL(totals.re)} iconName="home" colorClass="bg-emerald-600" />
-                                    <StatCard title="Caixa" value={formatBRL(totals.caixa)} iconName="landmark" colorClass="bg-purple-600" />
-                                    <StatCard title="Alternativos" value={formatBRL(totals.alt)} iconName="coins" colorClass="bg-rose-500" />
-                                </div>
-                                
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                                    <div className="bg-white p-8 card-radius shadow-sm border border-slate-100 flex flex-col items-center">
-                                        <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 mb-8 w-full text-center">Alocação de Ativos</h3>
-                                        <div className="w-full h-80">
-                                            <ResponsiveContainer>
+                    {syncStatus && (
+                        <div className="fixed top-8 left-1/2 -translate-x-1/2 z-50 bg-slate-900/90 backdrop-blur text-white px-8 py-4 rounded-full shadow-2xl text-[10px] font-black flex items-center gap-4 animate-bounce">
+                            <div className="w-2 h-2 bg-blue-400 rounded-full animate-ping"></div>
+                            {syncStatus}
+                        </div>
+                    )}
+
+                    <main className="space-y-10 animate-in">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                            <StatCard isMobile={isMobile} title="Patrimônio" value={format(totals.total)} icon="Wallet" colorClass="bg-slate-900" />
+                            <StatCard isMobile={isMobile} title="Ações" value={format(totals.acoes)} icon="BarChart3" colorClass="bg-blue-600" />
+                            <StatCard isMobile={isMobile} title="Real Estate" value={format(totals.re)} icon="Building2" colorClass="bg-emerald-500" />
+                            <StatCard isMobile={isMobile} title="Caixa" value={format(totals.caixa)} icon="PiggyBank" colorClass="bg-indigo-500" />
+                            <StatCard isMobile={isMobile} title="Alternativos" value={format(totals.alt)} icon="Diamond" colorClass="bg-rose-500" />
+                        </div>
+
+                        {activeTab === 'dashboard' && (
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+                                <div className="lg:col-span-2 glass rounded-[2.5rem] p-10 min-h-[500px] flex flex-col shadow-inner">
+                                    <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-10 text-center">Alocação de Ativos</h2>
+                                    <div className="flex-1 w-full">
+                                        {chartData.length > 0 ? (
+                                            <ResponsiveContainer width="100%" height="100%">
                                                 <PieChart>
-                                                    <Pie 
-                                                        data={[
-                                                            { name: 'Ações', value: totals.acoes },
-                                                            { name: 'RE', value: totals.re },
-                                                            { name: 'Caixa', value: totals.caixa },
-                                                            { name: 'Alt', value: totals.alt }
-                                                        ].filter(v => v.value > 0)}
-                                                        innerRadius={80} outerRadius={110} paddingAngle={8} dataKey="value" stroke="none" cornerRadius={6}
-                                                    >
-                                                        {COLORS.map((c, i) => <Cell key={i} fill={c} />)}
+                                                    <Pie data={chartData} innerRadius={80} outerRadius={140} paddingAngle={8} dataKey="value" stroke="none" cornerRadius={12}>
+                                                        {chartData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                                                     </Pie>
-                                                    <Tooltip formatter={(v) => formatBRL(v)} />
+                                                    <Tooltip 
+                                                        contentStyle={{ borderRadius: '1.5rem', border: 'none', boxShadow: '0 25px 50px rgba(0,0,0,0.1)', fontWeight: '900' }}
+                                                        formatter={(v) => format(v)}
+                                                    />
+                                                    <Legend iconType="circle" />
                                                 </PieChart>
                                             </ResponsiveContainer>
-                                        </div>
+                                        ) : (
+                                            <div className="h-full flex items-center justify-center text-slate-300 font-bold uppercase tracking-widest text-[10px]">Aguardando dados...</div>
+                                        )}
                                     </div>
-                                    <div className="bg-white p-8 card-radius shadow-sm border border-slate-100">
-                                        <h3 className="text-sm font-black uppercase tracking-widest text-slate-400 mb-8">Resumo Consolidado</h3>
-                                        <div className="space-y-4">
-                                            {[
-                                                { label: 'Ações', value: totals.acoes, color: COLORS[1] },
-                                                { label: 'Real Estate', value: totals.re, color: COLORS[2] },
-                                                { label: 'Reserva e Caixa', value: totals.caixa, color: COLORS[3] },
-                                                { label: 'Alternativos', value: totals.alt, color: COLORS[4] }
-                                            ].map(item => (
-                                                <div key={item.label} className="flex justify-between items-center p-5 bg-slate-50 rounded-3xl border border-slate-100">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }}></div>
-                                                        <span className="text-sm font-bold text-slate-700">{item.label}</span>
-                                                    </div>
-                                                    <div className="text-right">
-                                                        <div className="font-black text-slate-900 value-text">{formatBRL(item.value)}</div>
-                                                        <div className="text-[9px] text-slate-400 font-black tracking-widest uppercase">
-                                                            {((item.value / (totals.total || 1)) * 100).toFixed(1)}%
-                                                        </div>
-                                                    </div>
+                                </div>
+                                <div className="glass rounded-[2.5rem] p-10 shadow-inner">
+                                    <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-8">Composição</h2>
+                                    <div className="space-y-4">
+                                        {chartData.map((item, i) => (
+                                            <div key={item.name} className="flex items-center justify-between p-5 bg-slate-50/50 rounded-3xl border border-slate-100 tabular">
+                                                <div className="flex items-center gap-4">
+                                                    <div className="w-4 h-4 rounded-full" style={{ background: COLORS[i % COLORS.length] }}></div>
+                                                    <span className="font-bold text-slate-700 text-sm">{item.name}</span>
                                                 </div>
+                                                <div className="text-right">
+                                                    <p className="font-black text-slate-900">{format(item.value)}</p>
+                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{((item.value / totals.total) * 100).toFixed(1)}%</p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {}
+                        {['acoes', 'realEstate', 'alternativos'].includes(activeTab) && (
+                            <div className="glass rounded-[2.5rem] overflow-hidden shadow-2xl animate-fade">
+                                <div className="p-8 bg-slate-50/50 border-b flex flex-col md:flex-row justify-between items-center gap-4">
+                                    <h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl">{activeTab}</h2>
+                                    <div className="flex gap-4">
+                                        {['acoes', 'realEstate'].includes(activeTab) && (
+                                            <button onClick={() => sync(activeTab)} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black tracking-widest hover:bg-emerald-700 shadow-lg shadow-emerald-100 uppercase">Sincronizar</button>
+                                        )}
+                                        <button onClick={() => add(activeTab)} className="bg-blue-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black tracking-widest hover:bg-blue-700 shadow-lg shadow-blue-100 uppercase">+ Adicionar</button>
+                                    </div>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left">
+                                        <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                                            <tr>
+                                                <th className="px-10 py-6">Ativo</th>
+                                                <th className="px-10 py-6">Quantidade</th>
+                                                <th className="px-10 py-6">P. Médio</th>
+                                                <th className="px-10 py-6">P. Atual</th>
+                                                <th className="px-10 py-6">Total</th>
+                                                <th className="px-10 py-6 text-right">Ações</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                            {(investments[activeTab] || []).map(item => (
+                                                <tr key={item.id} className="hover:bg-slate-50/50 transition-colors tabular text-sm">
+                                                    <td className="px-10 py-6 font-black text-slate-900 uppercase">{item.ticker || item.nome}</td>
+                                                    <td className="px-10 py-6 font-bold text-slate-500">{item.quantidade}</td>
+                                                    <td className="px-10 py-6 font-bold text-slate-500">{format(item.precoMedio || item.valor)}</td>
+                                                    <td className="px-10 py-6 font-black text-blue-600">{format(item.precoAtual || item.valor)}</td>
+                                                    <td className="px-10 py-6 font-black text-slate-900">{format((item.quantidade || 1) * (item.precoAtual || item.valor || 0))}</td>
+                                                    <td className="px-10 py-6 text-right">
+                                                        <div className="flex justify-end gap-3">
+                                                            <button onClick={() => editItem(activeTab, item.id)} className="text-slate-300 hover:text-blue-600 transition-colors">
+                                                                <LucideIcon name="Edit3" size={18} />
+                                                            </button>
+                                                            <button onClick={() => removeItem(activeTab, item.id)} className="text-slate-300 hover:text-rose-500 transition-colors">
+                                                                <LucideIcon name="Trash2" size={18} />
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
                                             ))}
-                                        </div>
-                                    </div>
+                                        </tbody>
+                                    </table>
                                 </div>
                             </div>
                         )}
 
-                        {}
-                        { activeTab === 'acoes' && (
-                            <div className="bg-white p-6 card-radius shadow-sm border border-slate-100 animate-in">
-                                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
-                                    <div>
-                                        <h2 className="text-xl font-black uppercase text-slate-900 leading-none">Carteira de Ações</h2>
-                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-2 text-emerald-600">Conexão B3 Ativa</p>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <button 
-                                            onClick={() => {
-                                                const ticker = window.prompt("Ticker (ex: PETR4):");
-                                                const qtd = window.prompt("Quantidade:");
-                                                const precoMedio = window.prompt("Preço Médio:");
-                                                if(ticker && qtd && precoMedio) {
-                                                    const newItem = { id: Date.now(), ticker: ticker.toUpperCase(), quantidade: Number(qtd), precoMedio: Number(precoMedio), precoAtual: Number(precoMedio) };
-                                                    updateData({...investments, acoes: [...(investments.acoes || []), newItem]});
-                                                }
-                                            }}
-                                            className="flex items-center gap-2 px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest bg-slate-900 text-white shadow-lg"
-                                        >
-                                            <i data-lucide="plus" className="w-3 h-3"></i> ADICIONAR
-                                        </button>
-                                        <button onClick={() => syncCategory('acoes')} disabled={syncing} className="bg-emerald-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase shadow-lg disabled:opacity-50">
-                                            {syncing ? 'Sincronizando...' : 'Atualizar Preços'}
-                                        </button>
-                                    </div>
+                        {activeTab === 'caixa' && (
+                            <div className="glass rounded-[2.5rem] overflow-hidden shadow-2xl animate-fade">
+                                <div className="p-8 bg-slate-50/50 border-b flex justify-between items-center">
+                                    <h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl">Reserva e Caixa</h2>
+                                    <button onClick={() => add('caixa')} className="bg-blue-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase">+ Novo Lançamento</button>
                                 </div>
-                                <div className="overflow-x-auto custom-scroll -mx-6 px-6">
-                                    <table className="w-full text-left min-w-[800px]">
-                                        <thead>
-                                            <tr className="border-b border-slate-100 text-[10px] font-black uppercase text-slate-400 tracking-widest">
-                                                <th className="pb-4">Ativo</th>
-                                                <th className="pb-4 text-center">Qtd</th>
-                                                <th className="pb-4 text-right">P. Médio</th>
-                                                <th className="pb-4 text-right">P. Atual</th>
-                                                <th className="pb-4 text-right">Patrimônio</th>
-                                                <th className="pb-4 text-right">Lucro R$</th>
-                                                <th className="pb-4 text-right">Lucro %</th>
-                                                <th className="pb-4"></th>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left">
+                                        <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                                            <tr>
+                                                <th className="px-10 py-6">Aplicação</th>
+                                                <th className="px-10 py-6">Vlr Aplicado</th>
+                                                <th className="px-10 py-6">Vlr Atualizado</th>
+                                                <th className="px-10 py-6">Rendimento</th>
+                                                <th className="px-10 py-6 text-right">Ações</th>
                                             </tr>
                                         </thead>
-                                        <tbody className="divide-y divide-slate-50">
-                                            {(investments.acoes || []).map(a => {
-                                                const total = a.quantidade * a.precoAtual;
-                                                const lucroReal = total - (a.quantidade * a.precoMedio);
-                                                const lucroPct = (lucroReal / (a.quantidade * a.precoMedio || 1)) * 100;
+                                        <tbody className="divide-y divide-slate-100">
+                                            {(investments.caixa || []).map(item => {
+                                                const rend = item.valorAtual - item.valorAplicado;
                                                 return (
-                                                    <tr key={a.id} className="group hover:bg-slate-50/50">
-                                                        <td className="py-4">
-                                                            <div className="font-black text-slate-900 text-sm">{a.ticker}</div>
-                                                            <div className="text-[9px] text-slate-400 font-bold uppercase">{a.nome || 'Ação B3'}</div>
+                                                    <tr key={item.id} className="hover:bg-slate-50/50 tabular text-sm">
+                                                        <td className="px-10 py-6 font-black text-slate-900 uppercase">{item.nome}</td>
+                                                        <td className="px-10 py-6 font-bold text-slate-500">{format(item.valorAplicado)}</td>
+                                                        <td className="px-10 py-6 font-black text-slate-900">{format(item.valorAtual)}</td>
+                                                        <td className={`px-10 py-6 font-bold ${rend >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                                            {rend >= 0 ? '+' : ''}{format(rend)}
                                                         </td>
-                                                        <td className="py-4 text-center font-bold text-slate-600 text-sm">{a.quantidade}</td>
-                                                        <td className="py-4 text-right font-medium text-slate-400 text-sm value-text">{formatBRL(a.precoMedio)}</td>
-                                                        <td className="py-4 text-right font-black text-blue-600 text-sm value-text">{formatBRL(a.precoAtual)}</td>
-                                                        <td className="py-4 text-right font-black text-slate-900 text-sm value-text">{formatBRL(total)}</td>
-                                                        <td className={`py-4 text-right font-black text-xs value-text ${lucroReal >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-                                                            {formatBRL(lucroReal)}
-                                                        </td>
-                                                        <td className={`py-4 text-right font-black text-xs ${lucroReal >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-                                                            {lucroPct.toFixed(2)}%
-                                                        </td>
-                                                        <td className="py-4 text-right">
-                                                            <button onClick={() => updateData({...investments, acoes: investments.acoes.filter(x => x.id !== a.id)})} className="text-slate-200 hover:text-rose-500 transition-colors">
-                                                                <i data-lucide="trash-2" className="w-4 h-4"></i>
-                                                            </button>
+                                                        <td className="px-10 py-6 text-right">
+                                                            <div className="flex justify-end gap-3">
+                                                                <button onClick={() => editItem('caixa', item.id)} className="text-slate-300 hover:text-blue-600 transition-colors">
+                                                                    <LucideIcon name="Edit3" size={18} />
+                                                                </button>
+                                                                <button onClick={() => removeItem('caixa', item.id)} className="text-slate-300 hover:text-rose-500 transition-colors">
+                                                                    <LucideIcon name="Trash2" size={18} />
+                                                                </button>
+                                                            </div>
                                                         </td>
                                                     </tr>
                                                 );
                                             })}
                                         </tbody>
                                     </table>
-                                    {(investments.acoes || []).length === 0 && <div className="py-20 text-center text-slate-300 font-bold uppercase text-[10px] tracking-[0.2em]">Sua carteira está vazia</div>}
                                 </div>
                             </div>
                         )}
-
-                        {}
-                        { activeTab === 'realEstate' && (
-                             <div className="bg-white p-6 card-radius shadow-sm border border-slate-100 animate-in">
-                                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
-                                    <div>
-                                        <h2 className="text-xl font-black uppercase text-slate-900 leading-none">Fundos Imobiliários</h2>
-                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-2 text-emerald-600">Sincronização IFIX</p>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <button 
-                                            onClick={() => {
-                                                const ticker = window.prompt("Ticker (ex: HGLG11):");
-                                                const qtd = window.prompt("Quantidade:");
-                                                const precoMedio = window.prompt("Preço Médio:");
-                                                if(ticker && qtd && precoMedio) {
-                                                    const newItem = { id: Date.now(), ticker: ticker.toUpperCase(), quantidade: Number(qtd), precoMedio: Number(precoMedio), precoAtual: Number(precoMedio) };
-                                                    updateData({...investments, realEstate: [...(investments.realEstate || []), newItem]});
-                                                }
-                                            }}
-                                            className="flex items-center gap-2 px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest bg-slate-900 text-white shadow-lg"
-                                        >
-                                            <i data-lucide="plus" className="w-3 h-3"></i> ADICIONAR
-                                        </button>
-                                        <button onClick={() => syncCategory('realEstate')} disabled={syncing} className="bg-emerald-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase shadow-lg disabled:opacity-50">
-                                            {syncing ? 'Sincronizando...' : 'Atualizar Preços'}
-                                        </button>
-                                    </div>
-                                </div>
-                                <div className="overflow-x-auto custom-scroll -mx-6 px-6">
-                                    <table className="w-full text-left min-w-[800px]">
-                                        <thead>
-                                            <tr className="border-b border-slate-100 text-[10px] font-black uppercase text-slate-400 tracking-widest">
-                                                <th className="pb-4">Ativo</th>
-                                                <th className="pb-4 text-center">Qtd</th>
-                                                <th className="pb-4 text-right">P. Médio</th>
-                                                <th className="pb-4 text-right">P. Atual</th>
-                                                <th className="pb-4 text-right">Patrimônio</th>
-                                                <th className="pb-4 text-right">Lucro R$</th>
-                                                <th className="pb-4 text-right">Lucro %</th>
-                                                <th className="pb-4"></th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-50">
-                                            {(investments.realEstate || []).map(a => {
-                                                const total = a.quantidade * a.precoAtual;
-                                                const lucroReal = total - (a.quantidade * a.precoMedio);
-                                                const lucroPct = (lucroReal / (a.quantidade * a.precoMedio || 1)) * 100;
-                                                return (
-                                                    <tr key={a.id} className="group hover:bg-slate-50/50">
-                                                        <td className="py-4">
-                                                            <div className="font-black text-slate-900 text-sm">{a.ticker}</div>
-                                                            <div className="text-[9px] text-slate-400 font-bold uppercase">{a.nome || 'FII B3'}</div>
-                                                        </td>
-                                                        <td className="py-4 text-center font-bold text-slate-600 text-sm">{a.quantidade}</td>
-                                                        <td className="py-4 text-right font-medium text-slate-400 text-sm value-text">{formatBRL(a.precoMedio)}</td>
-                                                        <td className="py-4 text-right font-black text-blue-600 text-sm value-text">{formatBRL(a.precoAtual)}</td>
-                                                        <td className="py-4 text-right font-black text-slate-900 text-sm value-text">{formatBRL(total)}</td>
-                                                        <td className={`py-4 text-right font-black text-xs value-text ${lucroReal >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-                                                            {formatBRL(lucroReal)}
-                                                        </td>
-                                                        <td className={`py-4 text-right font-black text-xs ${lucroReal >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-                                                            {lucroPct.toFixed(2)}%
-                                                        </td>
-                                                        <td className="py-4 text-right">
-                                                            <button onClick={() => updateData({...investments, realEstate: investments.realEstate.filter(x => x.id !== a.id)})} className="text-slate-200 hover:text-rose-500 transition-colors">
-                                                                <i data-lucide="trash-2" className="w-4 h-4"></i>
-                                                            </button>
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                    {(investments.realEstate || []).length === 0 && <div className="py-20 text-center text-slate-300 font-bold uppercase text-[10px] tracking-[0.2em]">Sem ativos cadastrados</div>}
-                                </div>
-                            </div>
-                        )}
-
-                        { activeTab === 'caixa' && renderCaixaSection() }
-                        { activeTab === 'alternativos' && renderManualSection('alternativos', 'Ativos Alternativos') }
                     </main>
 
-                    <footer className="mt-20 py-10 border-t border-slate-100 text-center">
-                        <p className="text-[10px] font-black uppercase tracking-[0.4em] text-slate-300">IcaroInvest Digital Management &copy; 2026</p>
+                    <footer className="mt-20 py-10 text-center border-t border-slate-100 text-[10px] font-black text-slate-300 uppercase tracking-[0.5em]">
+                        IcaroInvest Management Systems &copy; 2026
                     </footer>
                 </div>
             );
         };
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+        const start = () => {
+            const el = document.getElementById('root');
+            if (window.ReactDOM && window.React && window.Recharts) {
+                ReactDOM.createRoot(el).render(<App />);
+            } else { setTimeout(start, 50); }
+        };
+        start();
     </script>
 </body>
 </html>
