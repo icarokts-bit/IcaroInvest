@@ -21,8 +21,6 @@
         .animate-in { animation: fadeIn 0.4s ease-out forwards; }
         .custom-scroll::-webkit-scrollbar { height: 4px; }
         .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-        
-        /* Estilo para cabeçalhos clicáveis */
         th.sortable { cursor: pointer; user-select: none; transition: background-color 0.2s; }
         th.sortable:hover { background-color: rgba(0,0,0,0.02); }
     </style>
@@ -103,15 +101,9 @@
         const App = () => {
             const [activeTab, setActiveTab] = useState('dashboard');
             const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc', category: null });
-            
             const [investments, setInvestments] = useState({ 
-                acoes: [], 
-                realEstate: [], 
-                caixa: [], 
-                alternativos: [],
-                caixaTicker: [],
-                altTicker: [],
-                dividendos: []
+                acoes: [], realEstate: [], caixa: [], alternativos: [],
+                caixaTicker: [], altTicker: [], dividendos: []
             });
             const [syncStatus, setSyncStatus] = useState("");
             const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -141,41 +133,6 @@
                 await setDoc(doc(db, 'investments', 'portfolio_principal'), newData);
             };
 
-            const requestSort = (key, category) => {
-                let direction = 'asc';
-                if (sortConfig.key === key && sortConfig.direction === 'asc' && sortConfig.category === category) {
-                    direction = 'desc';
-                } else if (sortConfig.key === key && sortConfig.direction === 'desc' && sortConfig.category === category) {
-                    key = null;
-                    direction = 'asc';
-                }
-                setSortConfig({ key, direction, category });
-            };
-
-            const getSortedData = (data, category) => {
-                if (sortConfig.category !== category || !sortConfig.key) return data;
-                
-                return [...data].sort((a, b) => {
-                    let aVal, bVal;
-
-                    // Lógica especial para colunas calculadas (lucro, patrimônio)
-                    if (sortConfig.key === 'lucro_rs') {
-                        aVal = (parseValue(a.valorAtual || (a.quantidade * a.precoAtual)) - parseValue(a.valorAplicado || (a.quantidade * a.precoMedio)));
-                        bVal = (parseValue(b.valorAtual || (b.quantidade * b.precoAtual)) - parseValue(b.valorAplicado || (b.quantidade * b.precoMedio)));
-                    } else if (sortConfig.key === 'patrimonio') {
-                        aVal = parseValue(a.valorAtual || (a.quantidade * a.precoAtual));
-                        bVal = parseValue(b.valorAtual || (b.quantidade * b.precoAtual));
-                    } else {
-                        aVal = a[sortConfig.key];
-                        bVal = b[sortConfig.key];
-                    }
-
-                    if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
-                    if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
-                    return 0;
-                });
-            };
-
             const totals = useMemo(() => {
                 const getSumManual = (arr) => (arr || []).reduce((acc, b) => acc + parseValue(b.valorAtual || 0), 0);
                 const getSumTicker = (arr) => (arr || []).reduce((acc, b) => acc + (parseValue(b.quantidade || 0) * parseValue(b.precoAtual || 0)), 0);
@@ -189,88 +146,51 @@
                 return { acoes, re, caixa, alt, dividendos, total: acoes + re + caixa + alt };
             }, [investments]);
 
+            const categoryStats = useMemo(() => {
+                if (activeTab === 'dashboard' || activeTab === 'dividendos') return null;
+                let investido = 0; let atual = 0;
+
+                const calcTicker = (list) => {
+                    investido += list.reduce((acc, i) => acc + (parseValue(i.quantidade) * parseValue(i.precoMedio)), 0);
+                    atual += list.reduce((acc, i) => acc + (parseValue(i.quantidade) * parseValue(i.precoAtual)), 0);
+                };
+                const calcManual = (list) => {
+                    investido += list.reduce((acc, i) => acc + parseValue(i.valorAplicado), 0);
+                    atual += list.reduce((acc, i) => acc + parseValue(i.valorAtual), 0);
+                };
+
+                if (activeTab === 'acoes') calcTicker(investments.acoes || []);
+                if (activeTab === 'realEstate') calcTicker(investments.realEstate || []);
+                if (activeTab === 'caixa') { calcManual(investments.caixa || []); calcTicker(investments.caixaTicker || []); }
+                if (activeTab === 'alternativos') { calcManual(investments.alternativos || []); calcTicker(investments.altTicker || []); }
+
+                return { investido, atual, lucro: atual - investido, lucroPct: investido > 0 ? ((atual / investido) - 1) * 100 : 0 };
+            }, [investments, activeTab]);
+
             const format = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
 
-            const addManual = (cat) => {
-                const n = prompt("Nome do Ativo:");
-                const va = prompt("Valor Aplicado (R$):");
-                const vt = prompt("Valor Atual Hoje (R$):");
-                if (!n || va === null) return;
-                const item = { id: Date.now().toString(), nome: n, valorAplicado: parseValue(va), valorAtual: parseValue(vt || va) };
-                const updated = { ...investments, [cat]: [...(investments[cat] || []), item] };
-                setInvestments(updated); save(updated);
+            const requestSort = (key, category) => {
+                let direction = 'asc';
+                if (sortConfig.key === key && sortConfig.direction === 'asc' && sortConfig.category === category) direction = 'desc';
+                else if (sortConfig.key === key && sortConfig.direction === 'desc' && sortConfig.category === category) key = null;
+                setSortConfig({ key, direction, category });
             };
 
-            const addTicker = (cat) => {
-                const t = prompt("Ticker (ex: B5P211 ou BTC):");
-                const q = prompt("Quantidade:");
-                const p = prompt("Preço Médio de Compra:");
-                if (!t || !q) return;
-                const item = { id: Date.now().toString(), ticker: t.toUpperCase(), quantidade: parseValue(q), precoMedio: parseValue(p), precoAtual: parseValue(p) };
-                const updated = { ...investments, [cat]: [...(investments[cat] || []), item] };
-                setInvestments(updated); save(updated);
-            };
-
-            const addDividend = () => {
-                const d = prompt("Data (DD/MM/AAAA):", new Date().toLocaleDateString('pt-BR'));
-                const a = prompt("Ativo (Ticker):");
-                const t = prompt("Tipo (Dividendo/JCP/Rendimento):", "Dividendo");
-                const v = prompt("Valor Recebido (R$):");
-                if (!a || !v) return;
-                const item = { id: Date.now().toString(), data: d, ativo: a.toUpperCase(), tipo: t, valor: parseValue(v) };
-                const updated = { ...investments, dividendos: [...(investments.dividendos || []), item] };
-                setInvestments(updated); save(updated);
-            };
-
-            const editItem = (cat, id, type = 'manual') => {
-                const list = [...(investments[cat] || [])];
-                const idx = list.findIndex(i => i.id === id);
-                if (idx === -1) return;
-                const item = list[idx];
-
-                if (type === 'manual') {
-                    const va = prompt("Novo Valor Aplicado:", item.valorAplicado);
-                    const vt = prompt("Novo Valor Atualizado:", item.valorAtual);
-                    if (va !== null && vt !== null) {
-                        list[idx] = { ...item, valorAplicado: parseValue(va), valorAtual: parseValue(vt) };
-                    }
-                } else if (type === 'dividend') {
-                    const d = prompt("Nova Data:", item.data);
-                    const a = prompt("Novo Ativo:", item.ativo);
-                    const t = prompt("Novo Tipo:", item.tipo);
-                    const v = prompt("Novo Valor:", item.valor);
-                    if (a && v) {
-                        list[idx] = { ...item, data: d, ativo: a.toUpperCase(), tipo: t, valor: parseValue(v) };
-                    }
-                } else {
-                    const q = prompt("Nova Quantidade:", item.quantidade);
-                    const p = prompt("Novo Preço Médio:", item.precoMedio);
-                    if (q !== null && p !== null) {
-                        list[idx] = { ...item, quantidade: parseValue(q), precoMedio: parseValue(p) };
-                    }
-                }
-                const updated = { ...investments, [cat]: list };
-                setInvestments(updated); save(updated);
-            };
-
-            const sync = async (cat) => {
-                const list = [...(investments[cat] || [])];
-                if (list.length === 0) return;
-                setSyncStatus(`A sincronizar ativos...`);
-                for (let i = 0; i < list.length; i++) {
-                    if (!list[i].ticker) continue;
-                    const t = list[i].ticker.split('.')[0].trim().toUpperCase();
-                    setSyncStatus(`A atualizar ${t} (${i+1}/${list.length})...`);
-                    try {
-                        const res = await fetch(`https://brapi.dev/api/quote/${t}`, { headers: { 'Authorization': `Bearer ${BRAPI_TOKEN}` } });
-                        const d = await res.json();
-                        if (d.results?.[0]) list[i].precoAtual = d.results[0].regularMarketPrice;
-                        await new Promise(r => setTimeout(r, 350));
-                    } catch (e) { console.error(e); }
-                }
-                const updated = { ...investments, [cat]: list };
-                setInvestments(updated); save(updated);
-                setSyncStatus("Atualizado!"); setTimeout(() => setSyncStatus(""), 2000);
+            const getSortedData = (data, category) => {
+                if (sortConfig.category !== category || !sortConfig.key) return data;
+                return [...data].sort((a, b) => {
+                    let aVal, bVal;
+                    if (sortConfig.key === 'lucro_rs') {
+                        aVal = (parseValue(a.valorAtual || (a.quantidade * a.precoAtual)) - parseValue(a.valorAplicado || (a.quantidade * a.precoMedio)));
+                        bVal = (parseValue(b.valorAtual || (b.quantidade * b.precoAtual)) - parseValue(b.valorAplicado || (b.quantidade * b.precoMedio)));
+                    } else if (sortConfig.key === 'patrimonio') {
+                        aVal = parseValue(a.valorAtual || (a.quantidade * a.precoAtual));
+                        bVal = parseValue(b.valorAtual || (b.quantidade * b.precoAtual));
+                    } else { aVal = a[sortConfig.key]; bVal = b[sortConfig.key]; }
+                    if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+                    if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+                    return 0;
+                });
             };
 
             const SortIcon = ({ col, category }) => {
@@ -278,15 +198,71 @@
                 return sortConfig.direction === 'asc' ? <LucideIcon name="ChevronUp" size={12} className="inline ml-1 text-blue-600" /> : <LucideIcon name="ChevronDown" size={12} className="inline ml-1 text-blue-600" />;
             };
 
+            const editItem = (cat, id, type = 'manual') => {
+                const list = [...(investments[cat] || [])];
+                const idx = list.findIndex(i => i.id === id);
+                if (idx === -1) return;
+                const item = list[idx];
+                if (type === 'manual') {
+                    const va = prompt("Novo Valor Aplicado:", item.valorAplicado);
+                    const vt = prompt("Novo Valor Atualizado:", item.valorAtual);
+                    if (va !== null && vt !== null) list[idx] = { ...item, valorAplicado: parseValue(va), valorAtual: parseValue(vt) };
+                } else if (type === 'dividend') {
+                    const d = prompt("Nova Data:", item.data); const a = prompt("Novo Ativo:", item.ativo);
+                    const t = prompt("Novo Tipo:", item.tipo); const v = prompt("Novo Valor:", item.valor);
+                    if (a && v) list[idx] = { ...item, data: d, ativo: a.toUpperCase(), tipo: t, valor: parseValue(v) };
+                } else {
+                    const q = prompt("Nova Quantidade:", item.quantidade); const p = prompt("Novo Preço Médio:", item.precoMedio);
+                    if (q !== null && p !== null) list[idx] = { ...item, quantidade: parseValue(q), precoMedio: parseValue(p) };
+                }
+                const updated = { ...investments, [cat]: list }; setInvestments(updated); save(updated);
+            };
+
+            const addManual = (cat) => {
+                const n = prompt("Nome do Ativo:"); const va = prompt("Valor Aplicado (R$):"); const vt = prompt("Valor Atual Hoje (R$):");
+                if (!n || va === null) return;
+                const item = { id: Date.now().toString(), nome: n, valorAplicado: parseValue(va), valorAtual: parseValue(vt || va) };
+                const updated = { ...investments, [cat]: [...(investments[cat] || []), item] }; setInvestments(updated); save(updated);
+            };
+
+            const addTicker = (cat) => {
+                const t = prompt("Ticker (ex: B5P211 ou BTC):"); const q = prompt("Quantidade:"); const p = prompt("Preço Médio de Compra:");
+                if (!t || !q) return;
+                const item = { id: Date.now().toString(), ticker: t.toUpperCase(), quantidade: parseValue(q), precoMedio: parseValue(p), precoAtual: parseValue(p) };
+                const updated = { ...investments, [cat]: [...(investments[cat] || []), item] }; setInvestments(updated); save(updated);
+            };
+
+            const addDividend = () => {
+                const d = prompt("Data (DD/MM/AAAA):", new Date().toLocaleDateString('pt-BR')); const a = prompt("Ativo (Ticker):");
+                const t = prompt("Tipo:", "Dividendo"); const v = prompt("Valor Recebido (R$):");
+                if (!a || !v) return;
+                const item = { id: Date.now().toString(), data: d, ativo: a.toUpperCase(), tipo: t, valor: parseValue(v) };
+                const updated = { ...investments, dividendos: [...(investments.dividendos || []), item] }; setInvestments(updated); save(updated);
+            };
+
+            const sync = async (cat) => {
+                const list = [...(investments[cat] || [])]; if (list.length === 0) return;
+                setSyncStatus(`A sincronizar ativos...`);
+                for (let i = 0; i < list.length; i++) {
+                    if (!list[i].ticker) continue;
+                    const t = list[i].ticker.split('.')[0].trim().toUpperCase();
+                    setSyncStatus(`A atualizar ${t} (${i+1}/${list.length})...`);
+                    try {
+                        const res = await fetch(`https://brapi.dev/api/quote/${t}`, { headers: { 'Authorization': `Bearer ${BRAPI_TOKEN}` } });
+                        const d = await res.json(); if (d.results?.[0]) list[i].precoAtual = d.results[0].regularMarketPrice;
+                        await new Promise(r => setTimeout(r, 350));
+                    } catch (e) { console.error(e); }
+                }
+                const updated = { ...investments, [cat]: list }; setInvestments(updated); save(updated);
+                setSyncStatus("Atualizado!"); setTimeout(() => setSyncStatus(""), 2000);
+            };
+
             const renderManualTable = (cat, title) => {
                 const sorted = getSortedData(investments[cat] || [], cat);
                 return (
                     <div className="glass rounded-[2.5rem] overflow-hidden shadow-2xl animate-in mb-8">
                         <div className="p-8 bg-slate-50/50 border-b flex justify-between items-center">
-                            <div>
-                                <h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl">{title}</h2>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Controle Manual de Saldo</p>
-                            </div>
+                            <div><h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl">{title}</h2><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Controle Manual de Saldo</p></div>
                             <button onClick={() => addManual(cat)} className="bg-slate-900 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-black shadow-lg">+ Novo Lançamento</button>
                         </div>
                         <div className="overflow-x-auto custom-scroll">
@@ -303,8 +279,7 @@
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
                                     {sorted.map(item => {
-                                        const lucro = (item.valorAtual || 0) - (item.valorAplicado || 0);
-                                        const pct = item.valorAplicado > 0 ? (lucro / item.valorAplicado) * 100 : 0;
+                                        const lucro = (item.valorAtual || 0) - (item.valorAplicado || 0); const pct = item.valorAplicado > 0 ? (lucro / item.valorAplicado) * 100 : 0;
                                         return (
                                             <tr key={item.id} className="hover:bg-slate-50/50 tabular text-sm">
                                                 <td className="px-10 py-6 font-black text-slate-900 uppercase">{item.nome}</td>
@@ -333,10 +308,7 @@
                 return (
                     <div className="glass rounded-[2.5rem] overflow-hidden shadow-2xl animate-in mb-8">
                         <div className="p-8 bg-slate-50/50 border-b flex justify-between items-center">
-                            <div>
-                                <h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl">{title}</h2>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ativos Sincronizados (Ticker)</p>
-                            </div>
+                            <div><h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl">{title}</h2><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ativos Sincronizados (Ticker)</p></div>
                             <div className="flex gap-4">
                                 <button onClick={() => sync(cat)} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 shadow-lg flex items-center gap-2"><LucideIcon name="RefreshCw" size={14} /> Sincronizar</button>
                                 <button onClick={() => addTicker(cat)} className="bg-blue-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 shadow-lg">+ Adicionar Ticker</button>
@@ -358,10 +330,8 @@
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
                                     {sorted.map(item => {
-                                        const totalVal = item.quantidade * item.precoAtual;
-                                        const custoTotal = item.quantidade * item.precoMedio;
-                                        const lucroVal = totalVal - custoTotal;
-                                        const lucroPct = item.precoMedio > 0 ? ((item.precoAtual / item.precoMedio) - 1) * 100 : 0;
+                                        const totalVal = item.quantidade * item.precoAtual; const custoTotal = item.quantidade * item.precoMedio;
+                                        const lucroVal = totalVal - custoTotal; const lucroPct = item.precoMedio > 0 ? ((item.precoAtual / item.precoMedio) - 1) * 100 : 0;
                                         return (
                                             <tr key={item.id} className="hover:bg-slate-50/50 tabular text-sm">
                                                 <td className="px-10 py-6 font-black text-slate-900 uppercase">{item.ticker}</td>
@@ -387,62 +357,11 @@
                 );
             };
 
-            const renderDividendsTable = () => {
-                const sorted = getSortedData(investments.dividendos || [], 'dividendos');
-                return (
-                    <div className="glass rounded-[2.5rem] overflow-hidden shadow-2xl animate-in mb-8">
-                        <div className="p-8 bg-slate-50/50 border-b flex justify-between items-center">
-                            <div>
-                                <h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl">Proventos Recebidos</h2>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Histórico de Dividendos e Rendimentos</p>
-                            </div>
-                            <button onClick={addDividend} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 shadow-lg">+ Lançar Provento</button>
-                        </div>
-                        <div className="overflow-x-auto custom-scroll">
-                            <table className="w-full text-left">
-                                <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
-                                    <tr>
-                                        <th onClick={() => requestSort('data', 'dividendos')} className="sortable px-10 py-6">Data <SortIcon col="data" category="dividendos" /></th>
-                                        <th onClick={() => requestSort('ativo', 'dividendos')} className="sortable px-10 py-6">Ativo <SortIcon col="ativo" category="dividendos" /></th>
-                                        <th onClick={() => requestSort('tipo', 'dividendos')} className="sortable px-10 py-6">Tipo <SortIcon col="tipo" category="dividendos" /></th>
-                                        <th onClick={() => requestSort('valor', 'dividendos')} className="sortable px-10 py-6 text-right">Valor <SortIcon col="valor" category="dividendos" /></th>
-                                        <th className="px-10 py-6 text-right">Ações</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                    {sorted.map(item => (
-                                        <tr key={item.id} className="hover:bg-slate-50/50 tabular text-sm">
-                                            <td className="px-10 py-6 font-bold text-slate-500">{item.data}</td>
-                                            <td className="px-10 py-6 font-black text-slate-900 uppercase">{item.ativo}</td>
-                                            <td className="px-10 py-6 font-bold text-slate-400 uppercase text-[10px] tracking-widest">{item.tipo}</td>
-                                            <td className="px-10 py-6 text-right font-black text-emerald-600">{format(item.valor)}</td>
-                                            <td className="px-10 py-6 text-right">
-                                                <div className="flex justify-end gap-3">
-                                                    <button onClick={() => editItem('dividendos', item.id, 'dividend')} className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><LucideIcon name="Edit3" size={18} /></button>
-                                                    <button onClick={() => { if(confirm("Deseja excluir este provento?")) { const u = {...investments, dividendos: investments.dividendos.filter(i => i.id !== item.id)}; setInvestments(u); save(u); } }} className="p-2 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-600 hover:text-white transition-all"><LucideIcon name="Trash2" size={18} /></button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                    {(!investments.dividendos || investments.dividendos.length === 0) && (
-                                        <tr>
-                                            <td colSpan="5" className="px-10 py-20 text-center text-slate-300 italic font-medium">Nenhum provento lançado ainda.</td>
-                                        </tr>
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                );
-            };
-
             return (
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-32">
                     <header className="py-10 flex flex-col md:flex-row justify-between items-center gap-8">
                         <div className="flex items-center gap-4">
-                            <div className="bg-slate-900 text-white p-4 rounded-[2rem] shadow-2xl">
-                                <LucideIcon name="ShieldCheck" size={32} />
-                            </div>
+                            <div className="bg-slate-900 text-white p-4 rounded-[2rem] shadow-2xl"><LucideIcon name="ShieldCheck" size={32} /></div>
                             <div>
                                 <h1 className="text-3xl font-black tracking-tighter uppercase leading-none">ICARO<span className="text-blue-600">INVEST</span></h1>
                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1">Elite Management v6.2</p>
@@ -464,20 +383,24 @@
                         </nav>
                     </header>
 
-                    {syncStatus && (
-                        <div className="fixed top-10 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white px-8 py-3 rounded-full shadow-2xl text-[10px] font-black uppercase tracking-widest animate-in">
-                            {syncStatus}
-                        </div>
-                    )}
+                    {syncStatus && <div className="fixed top-10 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white px-8 py-3 rounded-full shadow-2xl text-[10px] font-black uppercase tracking-widest animate-in">{syncStatus}</div>}
 
                     <main className="space-y-10 animate-in">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-                            <StatCard isMobile={isMobile} title="Património Total" value={format(totals.total)} icon="Wallet" colorClass="bg-slate-900" />
-                            <StatCard isMobile={isMobile} title="Bolsa / Ações" value={format(totals.acoes)} icon="BarChart3" colorClass="bg-blue-600" />
-                            <StatCard isMobile={isMobile} title="Real Estate" value={format(totals.re)} icon="Building2" colorClass="bg-emerald-500" />
-                            <StatCard isMobile={isMobile} title="Reserva / Caixa" value={format(totals.caixa)} icon="PiggyBank" colorClass="bg-indigo-500" />
-                            <StatCard isMobile={isMobile} title="Total Proventos" value={format(totals.dividendos)} icon="Coins" colorClass="bg-sky-500" />
-                        </div>
+                        {activeTab === 'dashboard' ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                                <StatCard isMobile={isMobile} title="Património Total" value={format(totals.total)} icon="Wallet" colorClass="bg-slate-900" />
+                                <StatCard isMobile={isMobile} title="Bolsa / Ações" value={format(totals.acoes)} icon="BarChart3" colorClass="bg-blue-600" />
+                                <StatCard isMobile={isMobile} title="Real Estate" value={format(totals.re)} icon="Building2" colorClass="bg-emerald-500" />
+                                <StatCard isMobile={isMobile} title="Reserva / Caixa" value={format(totals.caixa)} icon="PiggyBank" colorClass="bg-indigo-500" />
+                                <StatCard isMobile={isMobile} title="Total Proventos" value={format(totals.dividendos)} icon="Coins" colorClass="bg-sky-500" />
+                            </div>
+                        ) : activeTab !== 'dividendos' ? (
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <StatCard isMobile={isMobile} title="Total Investido" value={format(categoryStats.investido)} icon="PiggyBank" colorClass="bg-slate-900" />
+                                <StatCard isMobile={isMobile} title={`Lucro Total (${categoryStats.lucroPct.toFixed(2)}%)`} value={format(categoryStats.lucro)} icon="TrendingUp" colorClass={categoryStats.lucro >= 0 ? "bg-emerald-500" : "bg-rose-500"} />
+                                <StatCard isMobile={isMobile} title="Patrimônio Atual" value={format(categoryStats.atual)} icon="Wallet" colorClass="bg-blue-600" />
+                            </div>
+                        ) : null}
 
                         {activeTab === 'dashboard' && (
                             <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
@@ -517,51 +440,62 @@
 
                         {activeTab === 'acoes' && renderTickerTable('acoes', 'Carteira de Ações')}
                         {activeTab === 'realEstate' && renderTickerTable('realEstate', 'Real Estate (FIIs)')}
-                        
-                        {activeTab === 'caixa' && (
-                            <>
-                                {renderManualTable('caixa', 'Reserva e Liquidez (Manual)')}
-                                {renderTickerTable('caixaTicker', 'Renda Fixa Cotada (Tickers)')}
-                            </>
-                        )}
-                        
-                        {activeTab === 'alternativos' && (
-                            <>
-                                {renderManualTable('alternativos', 'Ativos Alternativos (Manual)')}
-                                {renderTickerTable('altTicker', 'Ativos Cotados / Cripto (Tickers)')}
-                            </>
-                        )}
-
+                        {activeTab === 'caixa' && <>{renderManualTable('caixa', 'Reserva e Liquidez (Manual)')}{renderTickerTable('caixaTicker', 'Renda Fixa Cotada (Tickers)')}</>}
+                        {activeTab === 'alternativos' && <>{renderManualTable('alternativos', 'Ativos Alternativos (Manual)')}{renderTickerTable('altTicker', 'Ativos Cotados / Cripto (Tickers)')}</>}
                         {activeTab === 'dividendos' && (
                             <>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
                                     <div className="glass p-8 rounded-premium flex items-center justify-between shadow-xl bg-emerald-50/30">
-                                        <div>
-                                            <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Total Histórico Recebido</p>
-                                            <h3 className="text-4xl font-black text-emerald-700 tabular">{format(totals.dividendos)}</h3>
-                                        </div>
+                                        <div><p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Total Histórico Recebido</p><h3 className="text-4xl font-black text-emerald-700 tabular">{format(totals.dividendos)}</h3></div>
                                         <LucideIcon name="TrendingUp" size={48} className="text-emerald-500 opacity-20" />
                                     </div>
                                     <div className="glass p-8 rounded-premium flex items-center justify-between shadow-xl bg-blue-50/30">
-                                        <div>
-                                            <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1">Média Mensal Estimada</p>
-                                            <h3 className="text-4xl font-black text-blue-700 tabular">{format(totals.dividendos / (Math.max(1, investments.dividendos?.length || 1) / 4))}</h3>
-                                        </div>
+                                        <div><p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1">Média Mensal Estimada</p><h3 className="text-4xl font-black text-blue-700 tabular">{format(totals.dividendos / (Math.max(1, investments.dividendos?.length || 1) / 4))}</h3></div>
                                         <LucideIcon name="Activity" size={48} className="text-blue-500 opacity-20" />
                                     </div>
                                 </div>
-                                {renderDividendsTable()}
+                                <div className="glass rounded-[2.5rem] overflow-hidden shadow-2xl animate-in mb-8">
+                                    <div className="p-8 bg-slate-50/50 border-b flex justify-between items-center">
+                                        <div><h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl">Proventos Recebidos</h2><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Histórico de Dividendos e Rendimentos</p></div>
+                                        <button onClick={addDividend} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 shadow-lg">+ Lançar Provento</button>
+                                    </div>
+                                    <div className="overflow-x-auto custom-scroll">
+                                        <table className="w-full text-left">
+                                            <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                                                <tr>
+                                                    <th onClick={() => requestSort('data', 'dividendos')} className="sortable px-10 py-6">Data <SortIcon col="data" category="dividendos" /></th>
+                                                    <th onClick={() => requestSort('ativo', 'dividendos')} className="sortable px-10 py-6">Ativo <SortIcon col="ativo" category={cat} /></th>
+                                                    <th onClick={() => requestSort('tipo', 'dividendos')} className="sortable px-10 py-6">Tipo <SortIcon col="tipo" category={cat} /></th>
+                                                    <th onClick={() => requestSort('valor', 'dividendos')} className="sortable px-10 py-6 text-right">Valor <SortIcon col="valor" category={cat} /></th>
+                                                    <th className="px-10 py-6 text-right">Ações</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {(investments.dividendos || []).map(item => (
+                                                    <tr key={item.id} className="hover:bg-slate-50/50 tabular text-sm">
+                                                        <td className="px-10 py-6 font-bold text-slate-500">{item.data}</td>
+                                                        <td className="px-10 py-6 font-black text-slate-900 uppercase">{item.ativo}</td>
+                                                        <td className="px-10 py-6 font-bold text-slate-400 uppercase text-[10px] tracking-widest">{item.tipo}</td>
+                                                        <td className="px-10 py-6 text-right font-black text-emerald-600">{format(item.valor)}</td>
+                                                        <td className="px-10 py-6 text-right">
+                                                            <div className="flex justify-end gap-3">
+                                                                <button onClick={() => editItem('dividendos', item.id, 'dividend')} className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><LucideIcon name="Edit3" size={18} /></button>
+                                                                <button onClick={() => { if(confirm("Deseja excluir este provento?")) { const u = {...investments, dividendos: investments.dividendos.filter(i => i.id !== item.id)}; setInvestments(u); save(u); } }} className="p-2 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-600 hover:text-white transition-all"><LucideIcon name="Trash2" size={18} /></button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
                             </>
                         )}
                     </main>
-
-                    <footer className="mt-20 py-10 text-center border-t border-slate-100 text-[10px] font-black text-slate-300 uppercase tracking-[0.5em]">
-                        IcaroInvest Management Systems &copy; 2026
-                    </footer>
+                    <footer className="mt-20 py-10 text-center border-t border-slate-100 text-[10px] font-black text-slate-300 uppercase tracking-[0.5em]">IcaroInvest Management Systems &copy; 2026</footer>
                 </div>
             );
         };
-
         const start = () => { if (window.ReactDOM && window.React && window.Recharts) { ReactDOM.createRoot(document.getElementById('root')).render(<App />); } else { setTimeout(start, 50); } };
         start();
     </script>
