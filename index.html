@@ -35,6 +35,7 @@
         </div>
     </div>
 
+    <!-- Bibliotecas Necessárias -->
     <script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
@@ -74,6 +75,7 @@
             if (val === null || val === undefined || val === '') return 0;
             if (typeof val === 'number') return val;
             let clean = val.toString().trim();
+            // Lida com formatos brasileiros 1.000,00 -> 1000.00
             if (clean.includes(',') && clean.includes('.')) {
                 clean = clean.replace(/\./g, '').replace(',', '.');
             } else {
@@ -157,18 +159,18 @@
                 let investido = 0; let atual = 0;
 
                 const calcTicker = (list) => {
-                    investido += list.reduce((acc, i) => acc + (parseValue(i.quantidade) * parseValue(i.precoMedio)), 0);
-                    atual += list.reduce((acc, i) => acc + (parseValue(i.quantidade) * parseValue(i.precoAtual)), 0);
+                    investido += (list || []).reduce((acc, i) => acc + (parseValue(i.quantidade) * parseValue(i.precoMedio)), 0);
+                    atual += (list || []).reduce((acc, i) => acc + (parseValue(i.quantidade) * parseValue(i.precoAtual)), 0);
                 };
                 const calcManual = (list) => {
-                    investido += list.reduce((acc, i) => acc + parseValue(i.valorAplicado), 0);
-                    atual += list.reduce((acc, i) => acc + parseValue(i.valorAtual), 0);
+                    investido += (list || []).reduce((acc, i) => acc + parseValue(i.valorAplicado), 0);
+                    atual += (list || []).reduce((acc, i) => acc + parseValue(i.valorAtual), 0);
                 };
 
-                if (activeTab === 'acoes') calcTicker(investments.acoes || []);
-                if (activeTab === 'realEstate') calcTicker(investments.realEstate || []);
-                if (activeTab === 'caixa') { calcManual(investments.caixa || []); calcTicker(investments.caixaTicker || []); }
-                if (activeTab === 'alternativos') { calcManual(investments.alternativos || []); calcTicker(investments.altTicker || []); }
+                if (activeTab === 'acoes') calcTicker(investments.acoes);
+                if (activeTab === 'realEstate') calcTicker(investments.realEstate);
+                if (activeTab === 'caixa') { calcManual(investments.caixa); calcTicker(investments.caixaTicker); }
+                if (activeTab === 'alternativos') { calcManual(investments.alternativos); calcTicker(investments.altTicker); }
 
                 return { investido, atual, lucro: atual - investido, lucroPct: investido > 0 ? ((atual / investido) - 1) * 100 : 0 };
             }, [investments, activeTab]);
@@ -182,7 +184,7 @@
 
             const getSortedData = (data, category) => {
                 if (sortConfig.category !== category || !sortConfig.key) return data;
-                return [...data].sort((a, b) => {
+                return [...(data || [])].sort((a, b) => {
                     let aVal, bVal;
                     if (sortConfig.key === 'lucro_rs') {
                         aVal = (parseValue(a.valorAtual || (a.quantidade * a.precoAtual)) - parseValue(a.valorAplicado || (a.quantidade * a.precoMedio)));
@@ -262,7 +264,9 @@
                     setSyncStatus(`A atualizar ${t}...`);
                     try {
                         let url = `https://brapi.dev/api/quote/${t}`;
-                        if (['BTC', 'ETH', 'SOL', 'USDT'].includes(t)) url = `https://brapi.dev/api/v2/crypto?coin=${t}&currency=BRL`;
+                        if (['BTC', 'ETH', 'SOL', 'USDT'].includes(t)) {
+                            url = `https://brapi.dev/api/v2/crypto?coin=${t}&currency=BRL`;
+                        }
                         const res = await fetch(url, { headers: { 'Authorization': `Bearer ${BRAPI_TOKEN}` } });
                         const d = await res.json();
                         if (d.coins?.[0]) list[i].precoAtual = d.coins[0].regularMarketPrice;
