@@ -19,6 +19,8 @@
         .no-scrollbar::-webkit-scrollbar { display: none; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .animate-in { animation: fadeIn 0.4s ease-out forwards; }
+        .custom-scroll::-webkit-scrollbar { height: 4px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
     </style>
 </head>
 <body>
@@ -129,7 +131,7 @@
 
             const totals = useMemo(() => {
                 const getSum = (arr) => (arr || []).reduce((acc, b) => {
-                    const val = b.valorAtual !== undefined ? b.valorAtual : (b.precoAtual !== undefined ? (parseValue(b.quantidade || 1) * parseValue(b.precoAtual)) : parseValue(b.valor || 0));
+                    const val = b.valorAtual !== undefined ? parseValue(b.valorAtual) : (b.precoAtual !== undefined ? (parseValue(b.quantidade || 1) * parseValue(b.precoAtual)) : parseValue(b.valor || 0));
                     return acc + val;
                 }, 0);
                 const acoes = getSum(investments.acoes);
@@ -153,7 +155,7 @@
                 } else {
                     const t = prompt("Ticker:");
                     const q = prompt("Quantidade:");
-                    const p = prompt("Preço Médio:");
+                    const p = prompt("Preço de Compra:");
                     if (!t || !q) return;
                     item = { ...item, ticker: t.toUpperCase(), quantidade: parseValue(q), precoMedio: parseValue(p), precoAtual: parseValue(p) };
                 }
@@ -168,10 +170,12 @@
                 const item = list[idx];
 
                 if (cat === 'caixa' || cat === 'alternativos') {
+                    const label = cat === 'caixa' ? "Aplicação" : "Ativo";
+                    const n = prompt(`Novo nome do ${label}:`, item.nome);
                     const va = prompt("Novo Valor Aplicado:", item.valorAplicado);
                     const vt = prompt("Novo Valor Atualizado:", item.valorAtual);
                     if (va !== null && vt !== null) {
-                        list[idx] = { ...item, valorAplicado: parseValue(va), valorAtual: parseValue(vt) };
+                        list[idx] = { ...item, nome: n || item.nome, valorAplicado: parseValue(va), valorAtual: parseValue(vt) };
                     }
                 } else {
                     const q = prompt("Nova Quantidade:", item.quantidade);
@@ -191,12 +195,12 @@
                 for (let i = 0; i < list.length; i++) {
                     if (!list[i].ticker) continue;
                     const t = list[i].ticker.split('.')[0].trim().toUpperCase();
-                    setSyncStatus(`A atualizar ${t}...`);
+                    setSyncStatus(`A atualizar ${t} (${i+1}/${list.length})...`);
                     try {
                         const res = await fetch(`https://brapi.dev/api/quote/${t}`, { headers: { 'Authorization': `Bearer ${BRAPI_TOKEN}` } });
                         const d = await res.json();
                         if (d.results?.[0]) list[i].precoAtual = d.results[0].regularMarketPrice;
-                        await new Promise(r => setTimeout(r, 400));
+                        await new Promise(r => setTimeout(r, 350));
                     } catch (e) { console.error(e); }
                 }
                 const updated = { ...investments, [cat]: list };
@@ -213,12 +217,12 @@
                             </div>
                             <div>
                                 <h1 className="text-3xl font-black tracking-tighter leading-none uppercase">ICARO<span className="text-blue-600">INVEST</span></h1>
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1 text-center md:text-left">Elite Management v4.8</p>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1 text-center md:text-left">Elite Management v5.1</p>
                             </div>
                         </div>
                         <nav className="flex bg-white p-2 rounded-[1.5rem] shadow-xl border border-slate-100 overflow-x-auto no-scrollbar max-w-full">
                             {[
-                                { id: 'dashboard', icon: 'LayoutDashboard', label: 'Início' },
+                                { id: 'dashboard', icon: 'LayoutDashboard', label: 'Resumo' },
                                 { id: 'acoes', icon: 'TrendingUp', label: 'Ações' },
                                 { id: 'realEstate', icon: 'Home', label: 'RE' },
                                 { id: 'caixa', icon: 'Landmark', label: 'Caixa' },
@@ -282,6 +286,7 @@
                             </div>
                         )}
 
+                        {}
                         {(activeTab === 'caixa' || activeTab === 'alternativos') && (
                             <div className="glass rounded-[2.5rem] overflow-hidden shadow-2xl animate-fade">
                                 <div className="p-8 bg-slate-50/50 border-b flex justify-between items-center">
@@ -308,11 +313,11 @@
                                                 const pct = item.valorAplicado > 0 ? (lucro / item.valorAplicado) * 100 : 0;
                                                 return (
                                                     <tr key={item.id} className="hover:bg-slate-50/50 transition-colors tabular text-sm">
-                                                        <td className="px-10 py-6 font-black text-slate-900 uppercase truncate max-w-[200px]">{item.nome}</td>
+                                                        <td className="px-10 py-6 font-black text-slate-900 uppercase truncate max-w-[250px]">{item.nome}</td>
                                                         <td className="px-10 py-6 text-right font-bold text-slate-500">{format(item.valorAplicado)}</td>
                                                         <td className="px-10 py-6 text-right font-black text-blue-600">{format(item.valorAtual)}</td>
                                                         <td className={`px-10 py-6 text-right font-black ${lucro >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                                                            {format(lucro)}
+                                                            <div className="no-break">{format(lucro)}</div>
                                                             <span className="block text-[10px] opacity-70">({pct.toFixed(2)}%)</span>
                                                         </td>
                                                         <td className="px-10 py-6 text-right">
@@ -330,12 +335,15 @@
                             </div>
                         )}
 
+                        {}
                         {(activeTab === 'acoes' || activeTab === 'realEstate') && (
                             <div className="glass rounded-[2.5rem] overflow-hidden shadow-2xl animate-fade">
                                 <div className="p-8 bg-slate-50/50 border-b flex flex-col md:flex-row justify-between items-center gap-4">
-                                    <h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl">{activeTab === 'acoes' ? 'Ações' : 'Real Estate'}</h2>
+                                    <h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl">{activeTab === 'acoes' ? 'Minhas Ações' : 'Real Estate (FIIs)'}</h2>
                                     <div className="flex gap-4">
-                                        <button onClick={() => sync(activeTab)} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black tracking-widest hover:bg-emerald-700 shadow-lg uppercase">Sincronizar</button>
+                                        <button onClick={() => sync(activeTab)} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black tracking-widest hover:bg-emerald-700 shadow-lg uppercase flex items-center gap-2">
+                                            <LucideIcon name="RefreshCw" size={14} /> Sincronizar
+                                        </button>
                                         <button onClick={() => add(activeTab)} className="bg-blue-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black tracking-widest hover:bg-blue-700 shadow-lg uppercase">+ Adicionar</button>
                                     </div>
                                 </div>
@@ -344,29 +352,39 @@
                                         <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
                                             <tr>
                                                 <th className="px-10 py-6">Ativo</th>
-                                                <th className="px-10 py-6">Qtd</th>
-                                                <th className="px-10 py-6">P. Médio</th>
-                                                <th className="px-10 py-6">P. Atual</th>
+                                                <th className="px-10 py-6 text-center">Qtd</th>
+                                                <th className="px-10 py-6">Vlr Compra</th>
+                                                <th className="px-10 py-6">Vlr Atual</th>
                                                 <th className="px-10 py-6">Total</th>
+                                                <th className="px-10 py-6">Lucro (R$)</th>
                                                 <th className="px-10 py-6 text-right">Ações</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100">
-                                            {(investments[activeTab] || []).map(item => (
-                                                <tr key={item.id} className="hover:bg-slate-50/50 transition-colors tabular text-sm">
-                                                    <td className="px-10 py-6 font-black text-slate-900 uppercase">{item.ticker}</td>
-                                                    <td className="px-10 py-6 font-bold text-slate-500">{item.quantidade}</td>
-                                                    <td className="px-10 py-6 font-bold text-slate-500">{format(item.precoMedio)}</td>
-                                                    <td className="px-10 py-6 font-black text-blue-600">{format(item.precoAtual)}</td>
-                                                    <td className="px-10 py-6 font-black text-slate-900">{format(item.quantidade * item.precoAtual)}</td>
-                                                    <td className="px-10 py-6 text-right">
-                                                        <div className="flex justify-end gap-3">
-                                                            <button onClick={() => editItem(activeTab, item.id)} className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><LucideIcon name="Edit3" size={18} /></button>
-                                                            <button onClick={() => { if(confirm("Excluir?")) { const u = {...investments, [activeTab]: investments[activeTab].filter(i => i.id !== item.id)}; setInvestments(u); save(u); } }} className="p-2 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-600 hover:text-white transition-all"><LucideIcon name="Trash2" size={18} /></button>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            ))}
+                                            {(investments[activeTab] || []).map(item => {
+                                                const totalVal = item.quantidade * item.precoAtual;
+                                                const lucroVal = totalVal - (item.quantidade * item.precoMedio);
+                                                const lucroPct = ((item.precoAtual / item.precoMedio) - 1) * 100;
+                                                return (
+                                                    <tr key={item.id} className="hover:bg-slate-50/50 transition-colors tabular text-sm">
+                                                        <td className="px-10 py-6 font-black text-slate-900 uppercase">{item.ticker}</td>
+                                                        <td className="px-10 py-6 text-center font-bold text-slate-500">{item.quantidade}</td>
+                                                        <td className="px-10 py-6 font-bold text-slate-500">{format(item.precoMedio)}</td>
+                                                        <td className="px-10 py-6 font-black text-blue-600">{format(item.precoAtual)}</td>
+                                                        <td className="px-10 py-6 font-black text-slate-900">{format(totalVal)}</td>
+                                                        <td className={`px-10 py-6 font-black ${lucroVal >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                                            <div className="no-break">{format(lucroVal)}</div>
+                                                            <span className="block text-[10px] opacity-70">({lucroPct.toFixed(2)}%)</span>
+                                                        </td>
+                                                        <td className="px-10 py-6 text-right">
+                                                            <div className="flex justify-end gap-3">
+                                                                <button onClick={() => editItem(activeTab, item.id)} className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><LucideIcon name="Edit3" size={18} /></button>
+                                                                <button onClick={() => { if(confirm("Excluir?")) { const u = {...investments, [activeTab]: investments[activeTab].filter(i => i.id !== item.id)}; setInvestments(u); save(u); } }} className="p-2 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-600 hover:text-white transition-all"><LucideIcon name="Trash2" size={18} /></button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
                                         </tbody>
                                     </table>
                                 </div>
