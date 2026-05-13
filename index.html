@@ -219,14 +219,16 @@
             };
 
             const addManual = (cat) => {
-                const n = prompt("Nome do Ativo:"); const va = prompt("Valor Aplicado (R$):"); const vt = prompt("Valor Atual Hoje (R$):");
+                const n = prompt("Nome do Ativo (ex: Ouro):"); const va = prompt("Valor Aplicado (R$):"); const vt = prompt("Valor Atual Hoje (R$):");
                 if (!n || va === null) return;
                 const item = { id: Date.now().toString(), nome: n, valorAplicado: parseValue(va), valorAtual: parseValue(vt || va) };
                 const updated = { ...investments, [cat]: [...(investments[cat] || []), item] }; setInvestments(updated); save(updated);
             };
 
             const addTicker = (cat) => {
-                const t = prompt("Ticker (ex: B5P211 ou BTC):"); const q = prompt("Quantidade:"); const p = prompt("Preço Médio de Compra:");
+                const isCrypto = cat === 'altTicker';
+                const t = prompt(isCrypto ? "Moeda/Ticker (ex: BTC, ETH ou HASH11):" : "Ticker (ex: B5P211):");
+                const q = prompt("Quantidade:"); const p = prompt("Preço Médio de Compra (em R$):");
                 if (!t || !q) return;
                 const item = { id: Date.now().toString(), ticker: t.toUpperCase(), quantidade: parseValue(q), precoMedio: parseValue(p), precoAtual: parseValue(p) };
                 const updated = { ...investments, [cat]: [...(investments[cat] || []), item] }; setInvestments(updated); save(updated);
@@ -257,12 +259,12 @@
                 setSyncStatus("Atualizado!"); setTimeout(() => setSyncStatus(""), 2000);
             };
 
-            const renderManualTable = (cat, title) => {
+            const renderManualTable = (cat, title, subtitle) => {
                 const sorted = getSortedData(investments[cat] || [], cat);
                 return (
                     <div className="glass rounded-[2.5rem] overflow-hidden shadow-2xl animate-in mb-8">
                         <div className="p-8 bg-slate-50/50 border-b flex justify-between items-center">
-                            <div><h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl">{title}</h2><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Controle Manual de Saldo</p></div>
+                            <div><h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl">{title}</h2><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{subtitle || 'Controle Manual de Saldo'}</p></div>
                             <button onClick={() => addManual(cat)} className="bg-slate-900 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-black shadow-lg">+ Novo Lançamento</button>
                         </div>
                         <div className="overflow-x-auto custom-scroll">
@@ -303,12 +305,12 @@
                 );
             };
 
-            const renderTickerTable = (cat, title) => {
+            const renderTickerTable = (cat, title, subtitle) => {
                 const sorted = getSortedData(investments[cat] || [], cat);
                 return (
                     <div className="glass rounded-[2.5rem] overflow-hidden shadow-2xl animate-in mb-8">
                         <div className="p-8 bg-slate-50/50 border-b flex justify-between items-center">
-                            <div><h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl">{title}</h2><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ativos Sincronizados (Ticker)</p></div>
+                            <div><h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl">{title}</h2><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{subtitle || 'Ativos Sincronizados (Ticker)'}</p></div>
                             <div className="flex gap-4">
                                 <button onClick={() => sync(cat)} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 shadow-lg flex items-center gap-2"><LucideIcon name="RefreshCw" size={14} /> Sincronizar</button>
                                 <button onClick={() => addTicker(cat)} className="bg-blue-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 shadow-lg">+ Adicionar Ticker</button>
@@ -364,7 +366,7 @@
                             <div className="bg-slate-900 text-white p-4 rounded-[2rem] shadow-2xl"><LucideIcon name="ShieldCheck" size={32} /></div>
                             <div>
                                 <h1 className="text-3xl font-black tracking-tighter uppercase leading-none">ICARO<span className="text-blue-600">INVEST</span></h1>
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1">Elite Management v6.2</p>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1">Elite Management v6.3</p>
                             </div>
                         </div>
                         <nav className="flex bg-white p-2 rounded-[1.5rem] shadow-xl border border-slate-100 overflow-x-auto no-scrollbar max-w-full">
@@ -402,6 +404,7 @@
                             </div>
                         ) : null}
 
+                        {}
                         {activeTab === 'dashboard' && (
                             <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
                                 <div className="lg:col-span-2 glass rounded-[2.5rem] p-10 min-h-[500px] flex flex-col shadow-inner">
@@ -441,7 +444,15 @@
                         {activeTab === 'acoes' && renderTickerTable('acoes', 'Carteira de Ações')}
                         {activeTab === 'realEstate' && renderTickerTable('realEstate', 'Real Estate (FIIs)')}
                         {activeTab === 'caixa' && <>{renderManualTable('caixa', 'Reserva e Liquidez (Manual)')}{renderTickerTable('caixaTicker', 'Renda Fixa Cotada (Tickers)')}</>}
-                        {activeTab === 'alternativos' && <>{renderManualTable('alternativos', 'Ativos Alternativos (Manual)')}{renderTickerTable('altTicker', 'Ativos Cotados / Cripto (Tickers)')}</>}
+                        
+                        {}
+                        {activeTab === 'alternativos' && (
+                            <>
+                                {renderManualTable('alternativos', 'Bens e Ativos Físicos (Manual)', 'Colecionáveis, Ouro, Imóveis Físicos')}
+                                {renderTickerTable('altTicker', 'Moedas e Criptoativos', 'Bitcoin, Ethereum, ETFs Alternativos')}
+                            </>
+                        )}
+
                         {activeTab === 'dividendos' && (
                             <>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
@@ -464,9 +475,9 @@
                                             <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
                                                 <tr>
                                                     <th onClick={() => requestSort('data', 'dividendos')} className="sortable px-10 py-6">Data <SortIcon col="data" category="dividendos" /></th>
-                                                    <th onClick={() => requestSort('ativo', 'dividendos')} className="sortable px-10 py-6">Ativo <SortIcon col="ativo" category={cat} /></th>
-                                                    <th onClick={() => requestSort('tipo', 'dividendos')} className="sortable px-10 py-6">Tipo <SortIcon col="tipo" category={cat} /></th>
-                                                    <th onClick={() => requestSort('valor', 'dividendos')} className="sortable px-10 py-6 text-right">Valor <SortIcon col="valor" category={cat} /></th>
+                                                    <th onClick={() => requestSort('ativo', 'dividendos')} className="sortable px-10 py-6">Ativo <SortIcon col="ativo" category="dividendos" /></th>
+                                                    <th onClick={() => requestSort('tipo', 'dividendos')} className="sortable px-10 py-6">Tipo <SortIcon col="tipo" category="dividendos" /></th>
+                                                    <th onClick={() => requestSort('valor', 'dividendos')} className="sortable px-10 py-6 text-right">Valor <SortIcon col="valor" category="dividendos" /></th>
                                                     <th className="px-10 py-6 text-right">Ações</th>
                                                 </tr>
                                             </thead>
