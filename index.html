@@ -75,7 +75,6 @@
             if (val === null || val === undefined || val === '') return 0;
             if (typeof val === 'number') return val;
             let clean = val.toString().trim();
-            // Lida com formatos brasileiros 1.000,00 -> 1000.00
             if (clean.includes(',') && clean.includes('.')) {
                 clean = clean.replace(/\./g, '').replace(',', '.');
             } else {
@@ -111,7 +110,7 @@
             const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc', category: null });
             const [investments, setInvestments] = useState({ 
                 acoes: [], realEstate: [], caixa: [], alternativos: [],
-                caixaTicker: [], altTicker: [], dividendos: []
+                caixaTicker: [], altFunds: [], altStocks: [], altCrypto: [], dividendos: []
             });
             const [syncStatus, setSyncStatus] = useState("");
             const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -148,7 +147,10 @@
                 const acoes = getSumTicker(investments.acoes);
                 const re = getSumTicker(investments.realEstate);
                 const caixa = getSumManual(investments.caixa) + getSumTicker(investments.caixaTicker);
-                const alt = getSumManual(investments.alternativos) + getSumTicker(investments.altTicker);
+                
+                // Soma tripla dos Alternativos
+                const alt = getSumManual(investments.altFunds) + getSumTicker(investments.altStocks) + getSumTicker(investments.altCrypto);
+                
                 const dividendos = (investments.dividendos || []).reduce((acc, b) => acc + parseValue(b.valor || 0), 0);
                 
                 return { acoes, re, caixa, alt, dividendos, total: acoes + re + caixa + alt };
@@ -170,42 +172,17 @@
                 if (activeTab === 'acoes') calcTicker(investments.acoes);
                 if (activeTab === 'realEstate') calcTicker(investments.realEstate);
                 if (activeTab === 'caixa') { calcManual(investments.caixa); calcTicker(investments.caixaTicker); }
-                if (activeTab === 'alternativos') { calcManual(investments.alternativos); calcTicker(investments.altTicker); }
+                if (activeTab === 'alternativos') { 
+                    calcManual(investments.altFunds); 
+                    calcTicker(investments.altStocks); 
+                    calcTicker(investments.altCrypto); 
+                }
 
                 return { investido, atual, lucro: atual - investido, lucroPct: investido > 0 ? ((atual / investido) - 1) * 100 : 0 };
             }, [investments, activeTab]);
 
-            const requestSort = (key, category) => {
-                let direction = 'asc';
-                if (sortConfig.key === key && sortConfig.direction === 'asc' && sortConfig.category === category) direction = 'desc';
-                else if (sortConfig.key === key && sortConfig.direction === 'desc' && sortConfig.category === category) key = null;
-                setSortConfig({ key, direction, category });
-            };
-
-            const getSortedData = (data, category) => {
-                if (sortConfig.category !== category || !sortConfig.key) return data;
-                return [...(data || [])].sort((a, b) => {
-                    let aVal, bVal;
-                    if (sortConfig.key === 'lucro_rs') {
-                        aVal = (parseValue(a.valorAtual || (a.quantidade * a.precoAtual)) - parseValue(a.valorAplicado || (a.quantidade * a.precoMedio)));
-                        bVal = (parseValue(b.valorAtual || (b.quantidade * b.precoAtual)) - parseValue(b.valorAplicado || (b.quantidade * b.precoMedio)));
-                    } else if (sortConfig.key === 'patrimonio') {
-                        aVal = parseValue(a.valorAtual || (a.quantidade * a.precoAtual));
-                        bVal = parseValue(b.valorAtual || (b.quantidade * b.precoAtual));
-                    } else { aVal = a[sortConfig.key]; bVal = b[sortConfig.key]; }
-                    if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
-                    if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
-                    return 0;
-                });
-            };
-
-            const SortIcon = ({ col, category }) => {
-                if (sortConfig.key !== col || sortConfig.category !== category) return <LucideIcon name="ChevronsUpDown" size={12} className="inline ml-1 opacity-30" />;
-                return sortConfig.direction === 'asc' ? <LucideIcon name="ChevronUp" size={12} className="inline ml-1 text-blue-600" /> : <LucideIcon name="ChevronDown" size={12} className="inline ml-1 text-blue-600" />;
-            };
-
             const addManual = (cat) => {
-                const n = prompt("Nome do Ativo (ex: Ouro):"); 
+                const n = prompt("Nome do Ativo/Fundo:"); 
                 const va = prompt("Valor Aplicado (R$):"); 
                 const vt = prompt("Valor Atual Hoje (R$):");
                 if (!n || va === null) return;
@@ -214,23 +191,13 @@
             };
 
             const addTicker = (cat) => {
-                const isCrypto = cat === 'altTicker';
+                const isCrypto = cat === 'altCrypto';
                 const t = prompt(isCrypto ? "Moeda (ex: BTC, ETH):" : "Ticker (ex: PETR4, B5P211):");
                 const q = prompt("Quantidade (ex: 0,00229555):"); 
                 const p = prompt("Preço Médio de Compra (R$):");
                 if (!t || !q) return;
                 const item = { id: Date.now().toString(), ticker: t.toUpperCase(), quantidade: parseValue(q), precoMedio: parseValue(p), precoAtual: parseValue(p) };
                 const updated = { ...investments, [cat]: [...(investments[cat] || []), item] }; setInvestments(updated); save(updated);
-            };
-
-            const addDividend = () => {
-                const d = prompt("Data (DD/MM/AAAA):", new Date().toLocaleDateString('pt-BR'));
-                const a = prompt("Ativo (Ticker):");
-                const t = prompt("Tipo:", "Dividendo");
-                const v = prompt("Valor (R$):");
-                if (!a || !v) return;
-                const item = { id: Date.now().toString(), data: d, ativo: a.toUpperCase(), tipo: t, valor: parseValue(v) };
-                const updated = { ...investments, dividendos: [...(investments.dividendos || []), item] }; setInvestments(updated); save(updated);
             };
 
             const editItem = (cat, id, type = 'manual') => {
@@ -242,11 +209,7 @@
                     const va = prompt("Novo Valor Aplicado:", item.valorAplicado);
                     const vt = prompt("Novo Valor Atualizado:", item.valorAtual);
                     if (va !== null && vt !== null) list[idx] = { ...item, valorAplicado: parseValue(va), valorAtual: parseValue(vt) };
-                } else if (type === 'dividend') {
-                    const d = prompt("Nova Data:", item.data); const a = prompt("Novo Ativo:", item.ativo);
-                    const t = prompt("Novo Tipo:", item.tipo); const v = prompt("Novo Valor:", item.valor);
-                    if (a && v) list[idx] = { ...item, data: d, ativo: a.toUpperCase(), tipo: t, valor: parseValue(v) };
-                } else {
+                } else if (type === 'ticker') {
                     const q = prompt("Nova Quantidade:", item.quantidade.toString().replace('.', ',')); 
                     const p = prompt("Novo Preço Médio:", item.precoMedio.toString().replace('.', ','));
                     const pa = prompt("Novo Preço Atual:", item.precoAtual.toString().replace('.', ','));
@@ -264,7 +227,7 @@
                     setSyncStatus(`A atualizar ${t}...`);
                     try {
                         let url = `https://brapi.dev/api/quote/${t}`;
-                        if (['BTC', 'ETH', 'SOL', 'USDT'].includes(t)) {
+                        if (['BTC', 'ETH', 'SOL', 'USDT', 'ADA', 'DOT', 'BNB'].includes(t) || cat === 'altCrypto') {
                             url = `https://brapi.dev/api/v2/crypto?coin=${t}&currency=BRL`;
                         }
                         const res = await fetch(url, { headers: { 'Authorization': `Bearer ${BRAPI_TOKEN}` } });
@@ -279,7 +242,6 @@
             };
 
             const renderManualTable = (cat, title) => {
-                const sorted = getSortedData(investments[cat] || [], cat);
                 return (
                     <div className="glass rounded-[2.5rem] overflow-hidden shadow-2xl animate-in mb-8">
                         <div className="p-8 bg-slate-50/50 border-b flex justify-between items-center">
@@ -290,16 +252,16 @@
                             <table className="w-full text-left">
                                 <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
                                     <tr>
-                                        <th onClick={() => requestSort('nome', cat)} className="sortable px-10 py-6">Nome <SortIcon col="nome" category={cat} /></th>
-                                        <th onClick={() => requestSort('valorAplicado', cat)} className="sortable px-10 py-6 text-right">Vlr Aplicado <SortIcon col="valorAplicado" category={cat} /></th>
-                                        <th onClick={() => requestSort('valorAtual', cat)} className="sortable px-10 py-6 text-right">Vlr Atualizado <SortIcon col="valorAtual" category={cat} /></th>
+                                        <th className="px-10 py-6">Nome</th>
+                                        <th className="px-10 py-6 text-right">Vlr Aplicado</th>
+                                        <th className="px-10 py-6 text-right">Vlr Atualizado</th>
                                         <th className="px-10 py-6 text-right">Lucro R$</th>
                                         <th className="px-10 py-6 text-right">Lucro %</th>
                                         <th className="px-10 py-6 text-right">Ações</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
-                                    {sorted.map(item => {
+                                    {(investments[cat] || []).map(item => {
                                         const lucroVal = item.valorAtual - item.valorAplicado;
                                         const lucroPct = item.valorAplicado > 0 ? (lucroVal / item.valorAplicado) * 100 : 0;
                                         return (
@@ -326,32 +288,31 @@
             };
 
             const renderTickerTable = (cat, title) => {
-                const sorted = getSortedData(investments[cat] || [], cat);
                 return (
                     <div className="glass rounded-[2.5rem] overflow-hidden shadow-2xl animate-in mb-8">
                         <div className="p-8 bg-slate-50/50 border-b flex justify-between items-center">
                             <h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl">{title}</h2>
                             <div className="flex gap-4">
                                 <button onClick={() => sync(cat)} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 shadow-lg flex items-center gap-2"><LucideIcon name="RefreshCw" size={14} /> Sincronizar</button>
-                                <button onClick={() => addTicker(cat)} className="bg-blue-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 shadow-lg">+ Adicionar Ticker</button>
+                                <button onClick={() => addTicker(cat)} className="bg-blue-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 shadow-lg">+ Adicionar Ativo</button>
                             </div>
                         </div>
                         <div className="overflow-x-auto custom-scroll">
                             <table className="w-full text-left">
                                 <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
                                     <tr>
-                                        <th onClick={() => requestSort('ticker', cat)} className="sortable px-10 py-6">Ativo <SortIcon col="ticker" category={cat} /></th>
-                                        <th onClick={() => requestSort('quantidade', cat)} className="sortable px-10 py-6 text-center">Qtd <SortIcon col="quantidade" category={cat} /></th>
-                                        <th onClick={() => requestSort('precoMedio', cat)} className="sortable px-10 py-6">P. Compra <SortIcon col="precoMedio" category={cat} /></th>
-                                        <th onClick={() => requestSort('precoAtual', cat)} className="sortable px-10 py-6">P. Atual <SortIcon col="precoAtual" category={cat} /></th>
-                                        <th onClick={() => requestSort('patrimonio', cat)} className="sortable px-10 py-6 font-black text-slate-900">Patrimônio <SortIcon col="patrimonio" category={cat} /></th>
-                                        <th onClick={() => requestSort('lucro_rs', cat)} className="sortable px-10 py-6 text-right">Lucro R$ <SortIcon col="lucro_rs" category={cat} /></th>
+                                        <th className="px-10 py-6">Ativo</th>
+                                        <th className="px-10 py-6 text-center">Qtd</th>
+                                        <th className="px-10 py-6">P. Compra</th>
+                                        <th className="px-10 py-6">P. Atual</th>
+                                        <th className="px-10 py-6 font-black text-slate-900">Patrimônio</th>
+                                        <th className="px-10 py-6 text-right">Lucro R$</th>
                                         <th className="px-10 py-6 text-right">Lucro %</th>
                                         <th className="px-10 py-6 text-right">Ações</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
-                                    {sorted.map(item => {
+                                    {(investments[cat] || []).map(item => {
                                         const qty = parseValue(item.quantidade);
                                         const totalVal = qty * item.precoAtual;
                                         const custoTotal = qty * item.precoMedio;
@@ -391,7 +352,7 @@
                             <div className="bg-slate-900 text-white p-4 rounded-[2rem] shadow-2xl"><LucideIcon name="ShieldCheck" size={32} /></div>
                             <div>
                                 <h1 className="text-3xl font-black tracking-tighter uppercase leading-none">ICARO<span className="text-blue-600">INVEST</span></h1>
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1">Management Elite v6.3</p>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1">Management Elite v6.4</p>
                             </div>
                         </div>
                         <nav className="flex bg-white p-2 rounded-[1.5rem] shadow-xl border border-slate-100 overflow-x-auto no-scrollbar max-w-full">
@@ -421,13 +382,13 @@
                                 <StatCard isMobile={isMobile} title="Reserva / Caixa" value={formatBRL(totals.caixa)} icon="PiggyBank" colorClass="bg-indigo-500" />
                                 <StatCard isMobile={isMobile} title="Total Proventos" value={formatBRL(totals.dividendos)} icon="Coins" colorClass="bg-sky-500" />
                             </div>
-                        ) : activeTab !== 'dividendos' ? (
+                        ) : (
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                 <StatCard isMobile={isMobile} title="Total Investido" value={formatBRL(categoryStats.investido)} icon="PiggyBank" colorClass="bg-slate-900" />
                                 <StatCard isMobile={isMobile} title={`Lucro Total (${categoryStats.lucroPct.toFixed(2)}%)`} value={formatBRL(categoryStats.lucro)} icon="TrendingUp" colorClass={categoryStats.lucro >= 0 ? "bg-emerald-500" : "bg-rose-500"} />
                                 <StatCard isMobile={isMobile} title="Patrimônio Atual" value={formatBRL(categoryStats.atual)} icon="Wallet" colorClass="bg-blue-600" />
                             </div>
-                        ) : null}
+                        )}
 
                         {activeTab === 'dashboard' && (
                             <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
@@ -468,56 +429,54 @@
                         {activeTab === 'acoes' && renderTickerTable('acoes', 'Carteira de Ações')}
                         {activeTab === 'realEstate' && renderTickerTable('realEstate', 'Real Estate (FIIs)')}
                         {activeTab === 'caixa' && <>{renderManualTable('caixa', 'Reserva e Liquidez (Manual)')}{renderTickerTable('caixaTicker', 'Renda Fixa Cotada (Tickers)')}</>}
-                        {activeTab === 'alternativos' && <>{renderManualTable('alternativos', 'Bens e Ativos Físicos (Manual)')}{renderTickerTable('altTicker', 'Moedas e Criptoativos')}</>}
+                        
+                        {activeTab === 'alternativos' && (
+                            <>
+                                {renderManualTable('altFunds', 'Fundos de Investimentos (Manual)')}
+                                {renderTickerTable('altStocks', 'Ações Alternativas (Ticker)')}
+                                {renderTickerTable('altCrypto', 'Criptomoedas (Alta Precisão)')}
+                            </>
+                        )}
 
                         {activeTab === 'dividendos' && (
-                            <>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
-                                    <div className="glass p-8 rounded-premium flex items-center justify-between shadow-xl bg-emerald-50/30">
-                                        <div><p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Total Histórico Recebido</p><h3 className="text-4xl font-black text-emerald-700 tabular">{formatBRL(totals.dividendos)}</h3></div>
-                                        <LucideIcon name="TrendingUp" size={48} className="text-emerald-500 opacity-20" />
-                                    </div>
-                                    <div className="glass p-8 rounded-premium flex items-center justify-between shadow-xl bg-blue-50/30">
-                                        <div><p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1">Média Mensal Estimada</p><h3 className="text-4xl font-black text-blue-700 tabular">{formatBRL(totals.dividendos / (Math.max(1, investments.dividendos?.length || 1) / 4))}</h3></div>
-                                        <LucideIcon name="Activity" size={48} className="text-blue-500 opacity-20" />
-                                    </div>
+                            <div className="glass rounded-[2.5rem] overflow-hidden shadow-2xl animate-in">
+                                <div className="p-8 bg-slate-50/50 border-b flex justify-between items-center">
+                                    <h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl">Histórico de Proventos</h2>
+                                    <button onClick={() => {
+                                        const d = prompt("Data (DD/MM/AAAA):", new Date().toLocaleDateString('pt-BR'));
+                                        const a = prompt("Ativo:");
+                                        const v = prompt("Valor (R$):");
+                                        if (a && v) {
+                                            const updated = { ...investments, dividendos: [...(investments.dividendos || []), { id: Date.now().toString(), data: d, ativo: a.toUpperCase(), valor: parseValue(v) }] };
+                                            setInvestments(updated); save(updated);
+                                        }
+                                    }} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 shadow-lg">+ Lançar Provento</button>
                                 </div>
-                                <div className="glass rounded-[2.5rem] overflow-hidden shadow-2xl animate-in mb-8">
-                                    <div className="p-8 bg-slate-50/50 border-b flex justify-between items-center">
-                                        <h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl">Lançamentos de Proventos</h2>
-                                        <button onClick={addDividend} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 shadow-lg">+ Lançar Provento</button>
-                                    </div>
-                                    <div className="overflow-x-auto custom-scroll">
-                                        <table className="w-full text-left">
-                                            <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
-                                                <tr>
-                                                    <th className="px-10 py-6">Data</th>
-                                                    <th className="px-10 py-6">Ativo</th>
-                                                    <th className="px-10 py-6">Tipo</th>
-                                                    <th className="px-10 py-6 text-right">Valor</th>
-                                                    <th className="px-10 py-6 text-right">Ações</th>
+                                <div className="overflow-x-auto custom-scroll">
+                                    <table className="w-full text-left">
+                                        <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                                            <tr>
+                                                <th className="px-10 py-6">Data</th>
+                                                <th className="px-10 py-6">Ativo</th>
+                                                <th className="px-10 py-6 text-right">Valor</th>
+                                                <th className="px-10 py-6 text-right">Ações</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                            {(investments.dividendos || []).map(item => (
+                                                <tr key={item.id} className="hover:bg-slate-50/50 tabular text-sm">
+                                                    <td className="px-10 py-6 font-bold text-slate-500">{item.data}</td>
+                                                    <td className="px-10 py-6 font-black text-slate-900 uppercase">{item.ativo}</td>
+                                                    <td className="px-10 py-6 text-right font-black text-emerald-600">{formatBRL(item.valor)}</td>
+                                                    <td className="px-10 py-6 text-right">
+                                                        <button onClick={() => { if(confirm("Remover?")) { const u = {...investments, dividendos: investments.dividendos.filter(i => i.id !== item.id)}; setInvestments(u); save(u); } }} className="p-2 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-600 hover:text-white transition-all"><LucideIcon name="Trash2" size={18} /></button>
+                                                    </td>
                                                 </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-100">
-                                                {(investments.dividendos || []).map(item => (
-                                                    <tr key={item.id} className="hover:bg-slate-50/50 tabular text-sm">
-                                                        <td className="px-10 py-6 font-bold text-slate-500">{item.data}</td>
-                                                        <td className="px-10 py-6 font-black text-slate-900 uppercase">{item.ativo}</td>
-                                                        <td className="px-10 py-6 font-bold text-slate-400 uppercase text-[10px] tracking-widest">{item.tipo}</td>
-                                                        <td className="px-10 py-6 text-right font-black text-emerald-600">{formatBRL(item.valor)}</td>
-                                                        <td className="px-10 py-6 text-right">
-                                                            <div className="flex justify-end gap-3">
-                                                                <button onClick={() => editItem('dividendos', item.id, 'dividend')} className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><LucideIcon name="Edit3" size={18} /></button>
-                                                                <button onClick={() => { if(confirm("Remover?")) { const u = {...investments, dividendos: investments.dividendos.filter(i => i.id !== item.id)}; setInvestments(u); save(u); } }} className="p-2 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-600 hover:text-white transition-all"><LucideIcon name="Trash2" size={18} /></button>
-                                                            </div>
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
+                                            ))}
+                                        </tbody>
+                                    </table>
                                 </div>
-                            </>
+                            </div>
                         )}
                     </main>
                     <footer className="mt-20 py-10 text-center border-t border-slate-100 text-[10px] font-black text-slate-300 uppercase tracking-[0.5em]">IcaroInvest Management Systems &copy; 2026</footer>
