@@ -70,10 +70,9 @@
         const COLORS = ['#0f172a', '#2563eb', '#10b981', '#8b5cf6', '#f43f5e', '#f59e0b'];
 
         const parseValue = (val) => {
-            if (!val) return 0;
+            if (val === null || val === undefined || val === '') return 0;
             if (typeof val === 'number') return val;
-            // Remove pontos de milhar e substitui vírgula por ponto
-            const clean = val.replace(/\./g, '').replace(',', '.');
+            const clean = val.toString().replace(/\./g, '').replace(',', '.');
             return parseFloat(clean) || 0;
         };
 
@@ -129,10 +128,13 @@
             };
 
             const totals = useMemo(() => {
-                const getSum = (arr) => (arr || []).reduce((acc, b) => acc + (parseValue(b.quantidade || 1) * parseValue(b.precoAtual || b.valorAtual || b.valor || 0)), 0);
+                const getSum = (arr) => (arr || []).reduce((acc, b) => {
+                    const val = b.valorAtual !== undefined ? b.valorAtual : (b.precoAtual !== undefined ? (parseValue(b.quantidade || 1) * parseValue(b.precoAtual)) : parseValue(b.valor || 0));
+                    return acc + val;
+                }, 0);
                 const acoes = getSum(investments.acoes);
                 const re = getSum(investments.realEstate);
-                const caixa = (investments.caixa || []).reduce((acc, b) => acc + parseValue(b.valorAtual || 0), 0);
+                const caixa = getSum(investments.caixa);
                 const alt = getSum(investments.alternativos);
                 return { acoes, re, caixa, alt, total: acoes + re + caixa + alt };
             }, [investments]);
@@ -141,17 +143,13 @@
 
             const add = (cat) => {
                 let item = { id: Date.now().toString() };
-                if (cat === 'caixa') {
-                    const n = prompt("Nome da Aplicação:");
+                if (cat === 'caixa' || cat === 'alternativos') {
+                    const label = cat === 'caixa' ? "Aplicação" : "Ativo";
+                    const n = prompt(`Nome do ${label}:`);
                     const va = prompt("Valor Aplicado (R$):");
                     const vt = prompt("Valor Atual Hoje (R$):");
-                    if (!n || !va) return;
+                    if (!n || va === null) return;
                     item = { ...item, nome: n, valorAplicado: parseValue(va), valorAtual: parseValue(vt || va) };
-                } else if (cat === 'alternativos') {
-                    const n = prompt("Nome do Ativo:");
-                    const v = prompt("Valor Estimado (R$):");
-                    if (!n || !v) return;
-                    item = { ...item, nome: n, valor: parseValue(v), precoAtual: parseValue(v), quantidade: 1 };
                 } else {
                     const t = prompt("Ticker:");
                     const q = prompt("Quantidade:");
@@ -169,18 +167,18 @@
                 if (idx === -1) return;
                 const item = list[idx];
 
-                if (cat === 'caixa') {
+                if (cat === 'caixa' || cat === 'alternativos') {
                     const va = prompt("Novo Valor Aplicado:", item.valorAplicado);
-                    const vt = prompt("Novo Valor Atualizado:", item.valorAtual ?? item.valorAplicado);
-                    if (va !== null && vt !== null) list[idx] = { ...item, valorAplicado: parseValue(va), valorAtual: parseValue(vt) };
-                } else if (cat === 'alternativos') {
-                    const n = prompt("Novo Nome:", item.nome);
-                    const v = prompt("Novo Valor:", item.valor);
-                    if (n !== null && v !== null) list[idx] = { ...item, nome: n, valor: parseValue(v), precoAtual: parseValue(v) };
+                    const vt = prompt("Novo Valor Atualizado:", item.valorAtual);
+                    if (va !== null && vt !== null) {
+                        list[idx] = { ...item, valorAplicado: parseValue(va), valorAtual: parseValue(vt) };
+                    }
                 } else {
                     const q = prompt("Nova Quantidade:", item.quantidade);
                     const p = prompt("Novo Preço Médio:", item.precoMedio);
-                    if (q !== null && p !== null) list[idx] = { ...item, quantidade: parseValue(q), precoMedio: parseValue(p) };
+                    if (q !== null && p !== null) {
+                        list[idx] = { ...item, quantidade: parseValue(q), precoMedio: parseValue(p) };
+                    }
                 }
                 const updated = { ...investments, [cat]: list };
                 setInvestments(updated); save(updated);
@@ -191,6 +189,7 @@
                 if (list.length === 0) return;
                 setSyncStatus(`A sincronizar ativos...`);
                 for (let i = 0; i < list.length; i++) {
+                    if (!list[i].ticker) continue;
                     const t = list[i].ticker.split('.')[0].trim().toUpperCase();
                     setSyncStatus(`A atualizar ${t}...`);
                     try {
@@ -214,7 +213,7 @@
                             </div>
                             <div>
                                 <h1 className="text-3xl font-black tracking-tighter leading-none uppercase">ICARO<span className="text-blue-600">INVEST</span></h1>
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1 text-center md:text-left">Elite Management v4.6</p>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1 text-center md:text-left">Elite Management v4.8</p>
                             </div>
                         </div>
                         <nav className="flex bg-white p-2 rounded-[1.5rem] shadow-xl border border-slate-100 overflow-x-auto no-scrollbar max-w-full">
@@ -283,20 +282,20 @@
                             </div>
                         )}
 
-                        {activeTab === 'caixa' && (
+                        {(activeTab === 'caixa' || activeTab === 'alternativos') && (
                             <div className="glass rounded-[2.5rem] overflow-hidden shadow-2xl animate-fade">
                                 <div className="p-8 bg-slate-50/50 border-b flex justify-between items-center">
                                     <div className="min-w-0">
-                                        <h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl truncate">Reserva e Caixa</h2>
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Controle de Renda Fixa</p>
+                                        <h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl truncate">{activeTab === 'caixa' ? "Reserva e Caixa" : "Ativos Alternativos"}</h2>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Controle de Rendimento Mensal</p>
                                     </div>
-                                    <button onClick={() => add('caixa')} className="bg-blue-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 shadow-lg">+ Novo Lançamento</button>
+                                    <button onClick={() => add(activeTab)} className="bg-blue-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 shadow-lg">+ Novo Lançamento</button>
                                 </div>
                                 <div className="overflow-x-auto custom-scroll">
                                     <table className="w-full text-left">
                                         <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
                                             <tr>
-                                                <th className="px-10 py-6">Aplicação</th>
+                                                <th className="px-10 py-6">{activeTab === 'caixa' ? "Aplicação" : "Ativo"}</th>
                                                 <th className="px-10 py-6 text-right">Vlr Aplicado</th>
                                                 <th className="px-10 py-6 text-right">Vlr Atualizado</th>
                                                 <th className="px-10 py-6 text-right">Rendimento</th>
@@ -304,35 +303,39 @@
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100">
-                                            {(investments.caixa || []).map(item => (
-                                                <tr key={item.id} className="hover:bg-slate-50/50 transition-colors tabular text-sm">
-                                                    <td className="px-10 py-6 font-black text-slate-900 uppercase truncate max-w-[200px]">{item.nome}</td>
-                                                    <td className="px-10 py-6 text-right font-bold text-slate-500">{format(item.valorAplicado)}</td>
-                                                    <td className="px-10 py-6 text-right font-black text-blue-600">{format(item.valorAtual)}</td>
-                                                    <td className={`px-10 py-6 text-right font-black ${item.valorAtual >= item.valorAplicado ? 'text-emerald-500' : 'text-rose-500'}`}>
-                                                        {format(item.valorAtual - item.valorAplicado)}
-                                                        <span className="block text-[10px] opacity-70">({item.valorAplicado > 0 ? (((item.valorAtual - item.valorAplicado) / item.valorAplicado) * 100).toFixed(2) : 0}%)</span>
-                                                    </td>
-                                                    <td className="px-10 py-6 text-right">
-                                                        <div className="flex justify-end gap-3">
-                                                            <button onClick={() => editItem('caixa', item.id)} className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><LucideIcon name="Edit3" size={18} /></button>
-                                                            <button onClick={() => { if(confirm("Excluir?")) { const u = {...investments, caixa: investments.caixa.filter(i => i.id !== item.id)}; setInvestments(u); save(u); } }} className="p-2 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-600 hover:text-white transition-all"><LucideIcon name="Trash2" size={18} /></button>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            ))}
+                                            {(investments[activeTab] || []).map(item => {
+                                                const lucro = (item.valorAtual || 0) - (item.valorAplicado || 0);
+                                                const pct = item.valorAplicado > 0 ? (lucro / item.valorAplicado) * 100 : 0;
+                                                return (
+                                                    <tr key={item.id} className="hover:bg-slate-50/50 transition-colors tabular text-sm">
+                                                        <td className="px-10 py-6 font-black text-slate-900 uppercase truncate max-w-[200px]">{item.nome}</td>
+                                                        <td className="px-10 py-6 text-right font-bold text-slate-500">{format(item.valorAplicado)}</td>
+                                                        <td className="px-10 py-6 text-right font-black text-blue-600">{format(item.valorAtual)}</td>
+                                                        <td className={`px-10 py-6 text-right font-black ${lucro >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                                            {format(lucro)}
+                                                            <span className="block text-[10px] opacity-70">({pct.toFixed(2)}%)</span>
+                                                        </td>
+                                                        <td className="px-10 py-6 text-right">
+                                                            <div className="flex justify-end gap-3">
+                                                                <button onClick={() => editItem(activeTab, item.id)} className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><LucideIcon name="Edit3" size={18} /></button>
+                                                                <button onClick={() => { if(confirm("Excluir?")) { const u = {...investments, [activeTab]: investments[activeTab].filter(i => i.id !== item.id)}; setInvestments(u); save(u); } }} className="p-2 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-600 hover:text-white transition-all"><LucideIcon name="Trash2" size={18} /></button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
                                         </tbody>
                                     </table>
                                 </div>
                             </div>
                         )}
 
-                        {['acoes', 'realEstate', 'alternativos'].includes(activeTab) && (
+                        {(activeTab === 'acoes' || activeTab === 'realEstate') && (
                             <div className="glass rounded-[2.5rem] overflow-hidden shadow-2xl animate-fade">
                                 <div className="p-8 bg-slate-50/50 border-b flex flex-col md:flex-row justify-between items-center gap-4">
-                                    <h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl">{activeTab === 'acoes' ? 'Ações' : activeTab === 'realEstate' ? 'Real Estate' : 'Alternativos'}</h2>
+                                    <h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl">{activeTab === 'acoes' ? 'Ações' : 'Real Estate'}</h2>
                                     <div className="flex gap-4">
-                                        {['acoes', 'realEstate'].includes(activeTab) && <button onClick={() => sync(activeTab)} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black tracking-widest hover:bg-emerald-700 shadow-lg uppercase">Sincronizar</button>}
+                                        <button onClick={() => sync(activeTab)} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black tracking-widest hover:bg-emerald-700 shadow-lg uppercase">Sincronizar</button>
                                         <button onClick={() => add(activeTab)} className="bg-blue-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black tracking-widest hover:bg-blue-700 shadow-lg uppercase">+ Adicionar</button>
                                     </div>
                                 </div>
@@ -351,9 +354,9 @@
                                         <tbody className="divide-y divide-slate-100">
                                             {(investments[activeTab] || []).map(item => (
                                                 <tr key={item.id} className="hover:bg-slate-50/50 transition-colors tabular text-sm">
-                                                    <td className="px-10 py-6 font-black text-slate-900 uppercase">{item.ticker || item.nome}</td>
+                                                    <td className="px-10 py-6 font-black text-slate-900 uppercase">{item.ticker}</td>
                                                     <td className="px-10 py-6 font-bold text-slate-500">{item.quantidade}</td>
-                                                    <td className="px-10 py-6 font-bold text-slate-500">{format(item.precoMedio ?? item.valor)}</td>
+                                                    <td className="px-10 py-6 font-bold text-slate-500">{format(item.precoMedio)}</td>
                                                     <td className="px-10 py-6 font-black text-blue-600">{format(item.precoAtual)}</td>
                                                     <td className="px-10 py-6 font-black text-slate-900">{format(item.quantidade * item.precoAtual)}</td>
                                                     <td className="px-10 py-6 text-right">
