@@ -21,6 +21,10 @@
         .animate-in { animation: fadeIn 0.4s ease-out forwards; }
         .custom-scroll::-webkit-scrollbar { height: 4px; }
         .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        
+        /* Estilo para cabeçalhos clicáveis */
+        th.sortable { cursor: pointer; user-select: none; transition: background-color 0.2s; }
+        th.sortable:hover { background-color: rgba(0,0,0,0.02); }
     </style>
 </head>
 <body>
@@ -98,6 +102,8 @@
 
         const App = () => {
             const [activeTab, setActiveTab] = useState('dashboard');
+            const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc', category: null });
+            
             const [investments, setInvestments] = useState({ 
                 acoes: [], 
                 realEstate: [], 
@@ -133,6 +139,41 @@
                 if (!window.firebaseAPI) return;
                 const { db, doc, setDoc } = window.firebaseAPI;
                 await setDoc(doc(db, 'investments', 'portfolio_principal'), newData);
+            };
+
+            const requestSort = (key, category) => {
+                let direction = 'asc';
+                if (sortConfig.key === key && sortConfig.direction === 'asc' && sortConfig.category === category) {
+                    direction = 'desc';
+                } else if (sortConfig.key === key && sortConfig.direction === 'desc' && sortConfig.category === category) {
+                    key = null;
+                    direction = 'asc';
+                }
+                setSortConfig({ key, direction, category });
+            };
+
+            const getSortedData = (data, category) => {
+                if (sortConfig.category !== category || !sortConfig.key) return data;
+                
+                return [...data].sort((a, b) => {
+                    let aVal, bVal;
+
+                    // Lógica especial para colunas calculadas (lucro, patrimônio)
+                    if (sortConfig.key === 'lucro_rs') {
+                        aVal = (parseValue(a.valorAtual || (a.quantidade * a.precoAtual)) - parseValue(a.valorAplicado || (a.quantidade * a.precoMedio)));
+                        bVal = (parseValue(b.valorAtual || (b.quantidade * b.precoAtual)) - parseValue(b.valorAplicado || (b.quantidade * b.precoMedio)));
+                    } else if (sortConfig.key === 'patrimonio') {
+                        aVal = parseValue(a.valorAtual || (a.quantidade * a.precoAtual));
+                        bVal = parseValue(b.valorAtual || (b.quantidade * b.precoAtual));
+                    } else {
+                        aVal = a[sortConfig.key];
+                        bVal = b[sortConfig.key];
+                    }
+
+                    if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+                    if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+                    return 0;
+                });
             };
 
             const totals = useMemo(() => {
@@ -232,154 +273,168 @@
                 setSyncStatus("Atualizado!"); setTimeout(() => setSyncStatus(""), 2000);
             };
 
-            const renderManualTable = (cat, title) => (
-                <div className="glass rounded-[2.5rem] overflow-hidden shadow-2xl animate-in mb-8">
-                    <div className="p-8 bg-slate-50/50 border-b flex justify-between items-center">
-                        <div>
-                            <h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl">{title}</h2>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Controle Manual de Saldo</p>
-                        </div>
-                        <button onClick={() => addManual(cat)} className="bg-slate-900 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-black shadow-lg">+ Novo Lançamento</button>
-                    </div>
-                    <div className="overflow-x-auto custom-scroll">
-                        <table className="w-full text-left">
-                            <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
-                                <tr>
-                                    <th className="px-10 py-6">Aplicação / Ativo</th>
-                                    <th className="px-10 py-6 text-right">Vlr Aplicado</th>
-                                    <th className="px-10 py-6 text-right">Vlr Atualizado</th>
-                                    <th className="px-10 py-6 text-right">Lucro R$</th>
-                                    <th className="px-10 py-6 text-right">Lucro %</th>
-                                    <th className="px-10 py-6 text-right">Ações</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {(investments[cat] || []).map(item => {
-                                    const lucro = (item.valorAtual || 0) - (item.valorAplicado || 0);
-                                    const pct = item.valorAplicado > 0 ? (lucro / item.valorAplicado) * 100 : 0;
-                                    return (
-                                        <tr key={item.id} className="hover:bg-slate-50/50 tabular text-sm">
-                                            <td className="px-10 py-6 font-black text-slate-900 uppercase">{item.nome}</td>
-                                            <td className="px-10 py-6 text-right font-bold text-slate-500">{format(item.valorAplicado)}</td>
-                                            <td className="px-10 py-6 text-right font-black text-blue-600">{format(item.valorAtual)}</td>
-                                            <td className={`px-10 py-6 text-right font-black ${lucro >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{format(lucro)}</td>
-                                            <td className={`px-10 py-6 text-right font-black ${lucro >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{pct.toFixed(2)}%</td>
-                                            <td className="px-10 py-6 text-right">
-                                                <div className="flex justify-end gap-3">
-                                                    <button onClick={() => editItem(cat, item.id, 'manual')} className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><LucideIcon name="Edit3" size={18} /></button>
-                                                    <button onClick={() => { if(confirm("Deseja excluir este item?")) { const u = {...investments, [cat]: investments[cat].filter(i => i.id !== item.id)}; setInvestments(u); save(u); } }} className="p-2 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-600 hover:text-white transition-all"><LucideIcon name="Trash2" size={18} /></button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            );
+            const SortIcon = ({ col, category }) => {
+                if (sortConfig.key !== col || sortConfig.category !== category) return <LucideIcon name="ChevronsUpDown" size={12} className="inline ml-1 opacity-30" />;
+                return sortConfig.direction === 'asc' ? <LucideIcon name="ChevronUp" size={12} className="inline ml-1 text-blue-600" /> : <LucideIcon name="ChevronDown" size={12} className="inline ml-1 text-blue-600" />;
+            };
 
-            const renderTickerTable = (cat, title) => (
-                <div className="glass rounded-[2.5rem] overflow-hidden shadow-2xl animate-in mb-8">
-                    <div className="p-8 bg-slate-50/50 border-b flex justify-between items-center">
-                        <div>
-                            <h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl">{title}</h2>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ativos Sincronizados (Ticker)</p>
+            const renderManualTable = (cat, title) => {
+                const sorted = getSortedData(investments[cat] || [], cat);
+                return (
+                    <div className="glass rounded-[2.5rem] overflow-hidden shadow-2xl animate-in mb-8">
+                        <div className="p-8 bg-slate-50/50 border-b flex justify-between items-center">
+                            <div>
+                                <h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl">{title}</h2>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Controle Manual de Saldo</p>
+                            </div>
+                            <button onClick={() => addManual(cat)} className="bg-slate-900 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-black shadow-lg">+ Novo Lançamento</button>
                         </div>
-                        <div className="flex gap-4">
-                            <button onClick={() => sync(cat)} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 shadow-lg flex items-center gap-2"><LucideIcon name="RefreshCw" size={14} /> Sincronizar</button>
-                            <button onClick={() => addTicker(cat)} className="bg-blue-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 shadow-lg">+ Adicionar Ticker</button>
-                        </div>
-                    </div>
-                    <div className="overflow-x-auto custom-scroll">
-                        <table className="w-full text-left">
-                            <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
-                                <tr>
-                                    <th className="px-10 py-6">Ativo</th>
-                                    <th className="px-10 py-6 text-center">Qtd</th>
-                                    <th className="px-10 py-6">P. Compra</th>
-                                    <th className="px-10 py-6">P. Atual</th>
-                                    <th className="px-10 py-6">Patrimônio</th>
-                                    <th className="px-10 py-6 text-right">Lucro R$</th>
-                                    <th className="px-10 py-6 text-right">Lucro %</th>
-                                    <th className="px-10 py-6 text-right">Ações</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {(investments[cat] || []).map(item => {
-                                    const totalVal = item.quantidade * item.precoAtual;
-                                    const custoTotal = item.quantidade * item.precoMedio;
-                                    const lucroVal = totalVal - custoTotal;
-                                    const lucroPct = item.precoMedio > 0 ? ((item.precoAtual / item.precoMedio) - 1) * 100 : 0;
-                                    return (
-                                        <tr key={item.id} className="hover:bg-slate-50/50 tabular text-sm">
-                                            <td className="px-10 py-6 font-black text-slate-900 uppercase">{item.ticker}</td>
-                                            <td className="px-10 py-6 text-center font-bold text-slate-500">{item.quantidade}</td>
-                                            <td className="px-10 py-6 text-slate-500 font-bold">{format(item.precoMedio)}</td>
-                                            <td className="px-10 py-6 font-black text-blue-600">{format(item.precoAtual)}</td>
-                                            <td className="px-10 py-6 font-black text-slate-900">{format(totalVal)}</td>
-                                            <td className={`px-10 py-6 text-right font-black ${lucroVal >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{format(lucroVal)}</td>
-                                            <td className={`px-10 py-6 text-right font-black ${lucroVal >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{lucroPct.toFixed(2)}%</td>
-                                            <td className="px-10 py-6 text-right">
-                                                <div className="flex justify-end gap-3">
-                                                    <button onClick={() => editItem(cat, item.id, 'ticker')} className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><LucideIcon name="Edit3" size={18} /></button>
-                                                    <button onClick={() => { if(confirm("Deseja excluir este item?")) { const u = {...investments, [cat]: investments[cat].filter(i => i.id !== item.id)}; setInvestments(u); save(u); } }} className="p-2 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-600 hover:text-white transition-all"><LucideIcon name="Trash2" size={18} /></button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            );
-
-            const renderDividendsTable = () => (
-                <div className="glass rounded-[2.5rem] overflow-hidden shadow-2xl animate-in mb-8">
-                    <div className="p-8 bg-slate-50/50 border-b flex justify-between items-center">
-                        <div>
-                            <h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl">Proventos Recebidos</h2>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Histórico de Dividendos e Rendimentos</p>
-                        </div>
-                        <button onClick={addDividend} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 shadow-lg">+ Lançar Provento</button>
-                    </div>
-                    <div className="overflow-x-auto custom-scroll">
-                        <table className="w-full text-left">
-                            <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
-                                <tr>
-                                    <th className="px-10 py-6">Data</th>
-                                    <th className="px-10 py-6">Ativo</th>
-                                    <th className="px-10 py-6">Tipo</th>
-                                    <th className="px-10 py-6 text-right">Valor</th>
-                                    <th className="px-10 py-6 text-right">Ações</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {(investments.dividendos || []).map(item => (
-                                    <tr key={item.id} className="hover:bg-slate-50/50 tabular text-sm">
-                                        <td className="px-10 py-6 font-bold text-slate-500">{item.data}</td>
-                                        <td className="px-10 py-6 font-black text-slate-900 uppercase">{item.ativo}</td>
-                                        <td className="px-10 py-6 font-bold text-slate-400 uppercase text-[10px] tracking-widest">{item.tipo}</td>
-                                        <td className="px-10 py-6 text-right font-black text-emerald-600">{format(item.valor)}</td>
-                                        <td className="px-10 py-6 text-right">
-                                            <div className="flex justify-end gap-3">
-                                                <button onClick={() => editItem('dividendos', item.id, 'dividend')} className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><LucideIcon name="Edit3" size={18} /></button>
-                                                <button onClick={() => { if(confirm("Deseja excluir este provento?")) { const u = {...investments, dividendos: investments.dividendos.filter(i => i.id !== item.id)}; setInvestments(u); save(u); } }} className="p-2 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-600 hover:text-white transition-all"><LucideIcon name="Trash2" size={18} /></button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
-                                {(!investments.dividendos || investments.dividendos.length === 0) && (
+                        <div className="overflow-x-auto custom-scroll">
+                            <table className="w-full text-left">
+                                <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
                                     <tr>
-                                        <td colSpan="5" className="px-10 py-20 text-center text-slate-300 italic font-medium">Nenhum provento lançado ainda.</td>
+                                        <th onClick={() => requestSort('nome', cat)} className="sortable px-10 py-6">Aplicação / Ativo <SortIcon col="nome" category={cat} /></th>
+                                        <th onClick={() => requestSort('valorAplicado', cat)} className="sortable px-10 py-6 text-right">Vlr Aplicado <SortIcon col="valorAplicado" category={cat} /></th>
+                                        <th onClick={() => requestSort('valorAtual', cat)} className="sortable px-10 py-6 text-right font-black text-slate-900">Vlr Atualizado <SortIcon col="valorAtual" category={cat} /></th>
+                                        <th onClick={() => requestSort('lucro_rs', cat)} className="sortable px-10 py-6 text-right">Lucro R$ <SortIcon col="lucro_rs" category={cat} /></th>
+                                        <th className="px-10 py-6 text-right">Lucro %</th>
+                                        <th className="px-10 py-6 text-right">Ações</th>
                                     </tr>
-                                )}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {sorted.map(item => {
+                                        const lucro = (item.valorAtual || 0) - (item.valorAplicado || 0);
+                                        const pct = item.valorAplicado > 0 ? (lucro / item.valorAplicado) * 100 : 0;
+                                        return (
+                                            <tr key={item.id} className="hover:bg-slate-50/50 tabular text-sm">
+                                                <td className="px-10 py-6 font-black text-slate-900 uppercase">{item.nome}</td>
+                                                <td className="px-10 py-6 text-right font-bold text-slate-500">{format(item.valorAplicado)}</td>
+                                                <td className="px-10 py-6 text-right font-black text-blue-600">{format(item.valorAtual)}</td>
+                                                <td className={`px-10 py-6 text-right font-black ${lucro >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{format(lucro)}</td>
+                                                <td className={`px-10 py-6 text-right font-black ${lucro >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{pct.toFixed(2)}%</td>
+                                                <td className="px-10 py-6 text-right">
+                                                    <div className="flex justify-end gap-3">
+                                                        <button onClick={() => editItem(cat, item.id, 'manual')} className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><LucideIcon name="Edit3" size={18} /></button>
+                                                        <button onClick={() => { if(confirm("Deseja excluir este item?")) { const u = {...investments, [cat]: investments[cat].filter(i => i.id !== item.id)}; setInvestments(u); save(u); } }} className="p-2 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-600 hover:text-white transition-all"><LucideIcon name="Trash2" size={18} /></button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
-                </div>
-            );
+                );
+            };
+
+            const renderTickerTable = (cat, title) => {
+                const sorted = getSortedData(investments[cat] || [], cat);
+                return (
+                    <div className="glass rounded-[2.5rem] overflow-hidden shadow-2xl animate-in mb-8">
+                        <div className="p-8 bg-slate-50/50 border-b flex justify-between items-center">
+                            <div>
+                                <h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl">{title}</h2>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ativos Sincronizados (Ticker)</p>
+                            </div>
+                            <div className="flex gap-4">
+                                <button onClick={() => sync(cat)} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 shadow-lg flex items-center gap-2"><LucideIcon name="RefreshCw" size={14} /> Sincronizar</button>
+                                <button onClick={() => addTicker(cat)} className="bg-blue-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 shadow-lg">+ Adicionar Ticker</button>
+                            </div>
+                        </div>
+                        <div className="overflow-x-auto custom-scroll">
+                            <table className="w-full text-left">
+                                <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                                    <tr>
+                                        <th onClick={() => requestSort('ticker', cat)} className="sortable px-10 py-6">Ativo <SortIcon col="ticker" category={cat} /></th>
+                                        <th onClick={() => requestSort('quantidade', cat)} className="sortable px-10 py-6 text-center">Qtd <SortIcon col="quantidade" category={cat} /></th>
+                                        <th onClick={() => requestSort('precoMedio', cat)} className="sortable px-10 py-6">P. Compra <SortIcon col="precoMedio" category={cat} /></th>
+                                        <th onClick={() => requestSort('precoAtual', cat)} className="sortable px-10 py-6">P. Atual <SortIcon col="precoAtual" category={cat} /></th>
+                                        <th onClick={() => requestSort('patrimonio', cat)} className="sortable px-10 py-6 font-black text-slate-900">Patrimônio <SortIcon col="patrimonio" category={cat} /></th>
+                                        <th onClick={() => requestSort('lucro_rs', cat)} className="sortable px-10 py-6 text-right">Lucro R$ <SortIcon col="lucro_rs" category={cat} /></th>
+                                        <th className="px-10 py-6 text-right">Lucro %</th>
+                                        <th className="px-10 py-6 text-right">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {sorted.map(item => {
+                                        const totalVal = item.quantidade * item.precoAtual;
+                                        const custoTotal = item.quantidade * item.precoMedio;
+                                        const lucroVal = totalVal - custoTotal;
+                                        const lucroPct = item.precoMedio > 0 ? ((item.precoAtual / item.precoMedio) - 1) * 100 : 0;
+                                        return (
+                                            <tr key={item.id} className="hover:bg-slate-50/50 tabular text-sm">
+                                                <td className="px-10 py-6 font-black text-slate-900 uppercase">{item.ticker}</td>
+                                                <td className="px-10 py-6 text-center font-bold text-slate-500">{item.quantidade}</td>
+                                                <td className="px-10 py-6 text-slate-500 font-bold">{format(item.precoMedio)}</td>
+                                                <td className="px-10 py-6 font-black text-blue-600">{format(item.precoAtual)}</td>
+                                                <td className="px-10 py-6 font-black text-slate-900">{format(totalVal)}</td>
+                                                <td className={`px-10 py-6 text-right font-black ${lucroVal >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{format(lucroVal)}</td>
+                                                <td className={`px-10 py-6 text-right font-black ${lucroVal >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{lucroPct.toFixed(2)}%</td>
+                                                <td className="px-10 py-6 text-right">
+                                                    <div className="flex justify-end gap-3">
+                                                        <button onClick={() => editItem(cat, item.id, 'ticker')} className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><LucideIcon name="Edit3" size={18} /></button>
+                                                        <button onClick={() => { if(confirm("Deseja excluir este item?")) { const u = {...investments, [cat]: investments[cat].filter(i => i.id !== item.id)}; setInvestments(u); save(u); } }} className="p-2 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-600 hover:text-white transition-all"><LucideIcon name="Trash2" size={18} /></button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                );
+            };
+
+            const renderDividendsTable = () => {
+                const sorted = getSortedData(investments.dividendos || [], 'dividendos');
+                return (
+                    <div className="glass rounded-[2.5rem] overflow-hidden shadow-2xl animate-in mb-8">
+                        <div className="p-8 bg-slate-50/50 border-b flex justify-between items-center">
+                            <div>
+                                <h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl">Proventos Recebidos</h2>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Histórico de Dividendos e Rendimentos</p>
+                            </div>
+                            <button onClick={addDividend} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 shadow-lg">+ Lançar Provento</button>
+                        </div>
+                        <div className="overflow-x-auto custom-scroll">
+                            <table className="w-full text-left">
+                                <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                                    <tr>
+                                        <th onClick={() => requestSort('data', 'dividendos')} className="sortable px-10 py-6">Data <SortIcon col="data" category="dividendos" /></th>
+                                        <th onClick={() => requestSort('ativo', 'dividendos')} className="sortable px-10 py-6">Ativo <SortIcon col="ativo" category="dividendos" /></th>
+                                        <th onClick={() => requestSort('tipo', 'dividendos')} className="sortable px-10 py-6">Tipo <SortIcon col="tipo" category="dividendos" /></th>
+                                        <th onClick={() => requestSort('valor', 'dividendos')} className="sortable px-10 py-6 text-right">Valor <SortIcon col="valor" category="dividendos" /></th>
+                                        <th className="px-10 py-6 text-right">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {sorted.map(item => (
+                                        <tr key={item.id} className="hover:bg-slate-50/50 tabular text-sm">
+                                            <td className="px-10 py-6 font-bold text-slate-500">{item.data}</td>
+                                            <td className="px-10 py-6 font-black text-slate-900 uppercase">{item.ativo}</td>
+                                            <td className="px-10 py-6 font-bold text-slate-400 uppercase text-[10px] tracking-widest">{item.tipo}</td>
+                                            <td className="px-10 py-6 text-right font-black text-emerald-600">{format(item.valor)}</td>
+                                            <td className="px-10 py-6 text-right">
+                                                <div className="flex justify-end gap-3">
+                                                    <button onClick={() => editItem('dividendos', item.id, 'dividend')} className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><LucideIcon name="Edit3" size={18} /></button>
+                                                    <button onClick={() => { if(confirm("Deseja excluir este provento?")) { const u = {...investments, dividendos: investments.dividendos.filter(i => i.id !== item.id)}; setInvestments(u); save(u); } }} className="p-2 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-600 hover:text-white transition-all"><LucideIcon name="Trash2" size={18} /></button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {(!investments.dividendos || investments.dividendos.length === 0) && (
+                                        <tr>
+                                            <td colSpan="5" className="px-10 py-20 text-center text-slate-300 italic font-medium">Nenhum provento lançado ainda.</td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                );
+            };
 
             return (
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-32">
@@ -390,7 +445,7 @@
                             </div>
                             <div>
                                 <h1 className="text-3xl font-black tracking-tighter uppercase leading-none">ICARO<span className="text-blue-600">INVEST</span></h1>
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1">Elite Management v6.1</p>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1">Elite Management v6.2</p>
                             </div>
                         </div>
                         <nav className="flex bg-white p-2 rounded-[1.5rem] shadow-xl border border-slate-100 overflow-x-auto no-scrollbar max-w-full">
