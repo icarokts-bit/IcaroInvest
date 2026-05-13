@@ -74,7 +74,15 @@
         const parseValue = (val) => {
             if (val === null || val === undefined || val === '') return 0;
             if (typeof val === 'number') return val;
-            const clean = val.toString().replace(/\./g, '').replace(',', '.');
+            
+            let clean = val.toString().trim();
+            // Se tiver vírgula e ponto, assumimos que o ponto é milhar
+            if (clean.includes(',') && clean.includes('.')) {
+                clean = clean.replace(/\./g, '').replace(',', '.');
+            } else {
+                // Se tiver apenas vírgula, trocamos por ponto
+                clean = clean.replace(',', '.');
+            }
             return parseFloat(clean) || 0;
         };
 
@@ -212,7 +220,8 @@
                     const t = prompt("Novo Tipo:", item.tipo); const v = prompt("Novo Valor:", item.valor);
                     if (a && v) list[idx] = { ...item, data: d, ativo: a.toUpperCase(), tipo: t, valor: parseValue(v) };
                 } else {
-                    const q = prompt("Nova Quantidade:", item.quantidade); const p = prompt("Novo Preço Médio:", item.precoMedio);
+                    const q = prompt("Nova Quantidade (ex: 0.00229555):", item.quantidade); 
+                    const p = prompt("Novo Preço Médio (ex: 581314.10):", item.precoMedio);
                     if (q !== null && p !== null) list[idx] = { ...item, quantidade: parseValue(q), precoMedio: parseValue(p) };
                 }
                 const updated = { ...investments, [cat]: list }; setInvestments(updated); save(updated);
@@ -228,7 +237,8 @@
             const addTicker = (cat) => {
                 const isCrypto = cat === 'altTicker';
                 const t = prompt(isCrypto ? "Moeda/Ticker (ex: BTC, ETH ou HASH11):" : "Ticker (ex: B5P211):");
-                const q = prompt("Quantidade:"); const p = prompt("Preço Médio de Compra (em R$):");
+                const q = prompt("Quantidade (Ex: 0.00229555):"); 
+                const p = prompt("Preço Médio de Compra (em R$):");
                 if (!t || !q) return;
                 const item = { id: Date.now().toString(), ticker: t.toUpperCase(), quantidade: parseValue(q), precoMedio: parseValue(p), precoAtual: parseValue(p) };
                 const updated = { ...investments, [cat]: [...(investments[cat] || []), item] }; setInvestments(updated); save(updated);
@@ -332,12 +342,16 @@
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
                                     {sorted.map(item => {
-                                        const totalVal = item.quantidade * item.precoAtual; const custoTotal = item.quantidade * item.precoMedio;
+                                        const qty = parseValue(item.quantidade);
+                                        const totalVal = qty * item.precoAtual; const custoTotal = qty * item.precoMedio;
                                         const lucroVal = totalVal - custoTotal; const lucroPct = item.precoMedio > 0 ? ((item.precoAtual / item.precoMedio) - 1) * 100 : 0;
                                         return (
                                             <tr key={item.id} className="hover:bg-slate-50/50 tabular text-sm">
                                                 <td className="px-10 py-6 font-black text-slate-900 uppercase">{item.ticker}</td>
-                                                <td className="px-10 py-6 text-center font-bold text-slate-500">{item.quantidade}</td>
+                                                {}
+                                                <td className="px-10 py-6 text-center font-bold text-slate-500">
+                                                    {qty < 1 ? qty.toFixed(8).replace(/\.?0+$/, "") : qty.toLocaleString('pt-BR')}
+                                                </td>
                                                 <td className="px-10 py-6 text-slate-500 font-bold">{format(item.precoMedio)}</td>
                                                 <td className="px-10 py-6 font-black text-blue-600">{format(item.precoAtual)}</td>
                                                 <td className="px-10 py-6 font-black text-slate-900">{format(totalVal)}</td>
@@ -404,7 +418,6 @@
                             </div>
                         ) : null}
 
-                        {}
                         {activeTab === 'dashboard' && (
                             <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
                                 <div className="lg:col-span-2 glass rounded-[2.5rem] p-10 min-h-[500px] flex flex-col shadow-inner">
@@ -444,14 +457,7 @@
                         {activeTab === 'acoes' && renderTickerTable('acoes', 'Carteira de Ações')}
                         {activeTab === 'realEstate' && renderTickerTable('realEstate', 'Real Estate (FIIs)')}
                         {activeTab === 'caixa' && <>{renderManualTable('caixa', 'Reserva e Liquidez (Manual)')}{renderTickerTable('caixaTicker', 'Renda Fixa Cotada (Tickers)')}</>}
-                        
-                        {}
-                        {activeTab === 'alternativos' && (
-                            <>
-                                {renderManualTable('alternativos', 'Bens e Ativos Físicos (Manual)', 'Colecionáveis, Ouro, Imóveis Físicos')}
-                                {renderTickerTable('altTicker', 'Moedas e Criptoativos', 'Bitcoin, Ethereum, ETFs Alternativos')}
-                            </>
-                        )}
+                        {activeTab === 'alternativos' && <>{renderManualTable('alternativos', 'Bens e Ativos Físicos (Manual)')}{renderTickerTable('altTicker', 'Moedas e Criptoativos')}</>}
 
                         {activeTab === 'dividendos' && (
                             <>
