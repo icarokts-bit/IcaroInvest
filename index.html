@@ -25,7 +25,7 @@
         <div class="flex items-center justify-center min-h-screen">
             <div class="text-center">
                 <div class="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">A sincronizar com a nuvem...</p>
+                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">Sincronizando dados...</p>
             </div>
         </div>
     </div>
@@ -123,7 +123,8 @@
 
             const totals = useMemo(() => {
                 const getSum = (arr) => (arr || []).reduce((acc, curr) => {
-                    const preco = Number(curr.precoAtual || curr.valorAtual || curr.valor || 0);
+                    // Mapeamento flexível para garantir que qualquer nome de campo seja somado
+                    const preco = Number(curr.valorAtual || curr.precoAtual || curr.valor || 0);
                     const qtd = Number(curr.quantidade || 1);
                     return acc + (preco * qtd);
                 }, 0);
@@ -163,7 +164,7 @@
             const add = (cat) => {
                 let item = { id: Date.now().toString() };
                 if (cat === 'caixa') {
-                    const n = prompt("Nome da Aplicação:");
+                    const n = prompt("Nome da Aplicação (ex: CDB Inter):");
                     const va = prompt("Valor Aplicado (R$):");
                     const vt = prompt("Valor Atual Hoje (R$):");
                     if (!n || !va) return;
@@ -193,7 +194,7 @@
                 const item = list[index];
                 if (cat === 'caixa') {
                     const va = prompt("Novo Valor Aplicado:", item.valorAplicado);
-                    const vt = prompt("Novo Valor Atual:", item.valorAtual);
+                    const vt = prompt("Novo Valor Atualizado Hoje:", item.valorAtual);
                     if (va !== null && vt !== null) {
                         list[index] = { ...item, valorAplicado: Number(va), valorAtual: Number(vt) };
                     }
@@ -238,7 +239,7 @@
                             </div>
                             <div>
                                 <h1 className="text-3xl font-black tracking-tighter leading-none uppercase">ICARO<span className="text-blue-600">INVEST</span></h1>
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1">Management Elite v4.1</p>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1">Management Elite v4.2</p>
                             </div>
                         </div>
 
@@ -279,10 +280,11 @@
                             <StatCard isMobile={isMobile} title="Alternativos" value={format(totals.alt)} icon="Diamond" colorClass="bg-rose-500" />
                         </div>
 
+                        {}
                         {activeTab === 'dashboard' && (
                             <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
                                 <div className="lg:col-span-2 glass rounded-[2.5rem] p-10 min-h-[500px] flex flex-col shadow-inner">
-                                    <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-10 text-center text-center">Alocação de Ativos</h2>
+                                    <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-10 text-center">Alocação de Ativos</h2>
                                     <div className="flex-1 w-full">
                                         {chartData.length > 0 ? (
                                             <ResponsiveContainer width="100%" height="100%">
@@ -323,15 +325,70 @@
                         )}
 
                         {}
+                        {activeTab === 'caixa' && (
+                            <div className="glass rounded-[2.5rem] overflow-hidden shadow-2xl animate-fade">
+                                <div className="p-8 bg-slate-50/50 border-b flex justify-between items-center">
+                                    <div>
+                                        <h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl">Reserva e Caixa</h2>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Controle de Renda Fixa e Liquidez</p>
+                                    </div>
+                                    <button onClick={() => add('caixa')} className="bg-blue-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 shadow-lg">+ Novo Lançamento</button>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left">
+                                        <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                                            <tr>
+                                                <th className="px-10 py-6">Aplicação</th>
+                                                <th className="px-10 py-6 text-right">Vlr Aplicado</th>
+                                                <th className="px-10 py-6 text-right">Vlr Atualizado</th>
+                                                <th className="px-10 py-6 text-right">Rendimento</th>
+                                                <th className="px-10 py-6 text-right">Acções</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                            {(investments.caixa || []).map(item => {
+                                                const rend = (item.valorAtual || 0) - (item.valorAplicado || 0);
+                                                const rendPct = ((item.valorAtual / item.valorAplicado) - 1) * 100;
+                                                return (
+                                                    <tr key={item.id} className="hover:bg-slate-50/50 transition-colors tabular text-sm">
+                                                        <td className="px-10 py-6 font-black text-slate-900 uppercase">{item.nome}</td>
+                                                        <td className="px-10 py-6 text-right font-bold text-slate-500">{format(item.valorAplicado)}</td>
+                                                        <td className="px-10 py-6 text-right font-black text-blue-600">{format(item.valorAtual)}</td>
+                                                        <td className={`px-10 py-6 text-right font-black ${rend >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                                            {format(rend)} <span className="text-[10px]">({rendPct.toFixed(2)}%)</span>
+                                                        </td>
+                                                        <td className="px-10 py-6 text-right">
+                                                            <div className="flex justify-end gap-3">
+                                                                <button onClick={() => editItem('caixa', item.id)} className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all">
+                                                                    <LucideIcon name="Edit3" size={18} />
+                                                                </button>
+                                                                <button onClick={() => removeItem('caixa', item.id)} className="p-2 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-600 hover:text-white transition-all">
+                                                                    <LucideIcon name="Trash2" size={18} />
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                    {(investments.caixa || []).length === 0 && <div className="p-20 text-center text-slate-300 font-bold uppercase tracking-widest text-xs">Nenhuma aplicação cadastrada.</div>}
+                                </div>
+                            </div>
+                        )}
+
+                        {}
                         {['acoes', 'realEstate', 'alternativos'].includes(activeTab) && (
                             <div className="glass rounded-[2.5rem] overflow-hidden shadow-2xl animate-fade">
                                 <div className="p-8 bg-slate-50/50 border-b flex flex-col md:flex-row justify-between items-center gap-4">
-                                    <h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl">{activeTab === 'acoes' ? 'Ações' : activeTab === 'realEstate' ? 'Real Estate' : 'Alternativos'}</h2>
+                                    <h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl">
+                                        {activeTab === 'acoes' ? 'Ações' : activeTab === 'realEstate' ? 'Real Estate' : 'Alternativos'}
+                                    </h2>
                                     <div className="flex gap-4">
                                         {['acoes', 'realEstate'].includes(activeTab) && (
-                                            <button onClick={() => sync(activeTab)} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black tracking-widest hover:bg-emerald-700 shadow-lg shadow-emerald-100 uppercase">Sincronizar</button>
+                                            <button onClick={() => sync(activeTab)} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black tracking-widest hover:bg-emerald-700 shadow-lg uppercase">Sincronizar</button>
                                         )}
-                                        <button onClick={() => add(activeTab)} className="bg-blue-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black tracking-widest hover:bg-blue-700 shadow-lg shadow-blue-100 uppercase">+ Adicionar</button>
+                                        <button onClick={() => add(activeTab)} className="bg-blue-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black tracking-widest hover:bg-blue-700 shadow-lg uppercase">+ Adicionar</button>
                                     </div>
                                 </div>
                                 <div className="overflow-x-auto">
@@ -366,53 +423,6 @@
                                                     </td>
                                                 </tr>
                                             ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        )}
-
-                        {activeTab === 'caixa' && (
-                            <div className="glass rounded-[2.5rem] overflow-hidden shadow-2xl animate-fade">
-                                <div className="p-8 bg-slate-50/50 border-b flex justify-between items-center">
-                                    <h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl">Reserva e Caixa</h2>
-                                    <button onClick={() => add('caixa')} className="bg-blue-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest">+ Novo Lançamento</button>
-                                </div>
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-left">
-                                        <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
-                                            <tr>
-                                                <th className="px-10 py-6">Aplicação</th>
-                                                <th className="px-10 py-6 text-right">Vlr Aplicado</th>
-                                                <th className="px-10 py-6 text-right">Vlr Atualizado</th>
-                                                <th className="px-10 py-6 text-right">Rendimento</th>
-                                                <th className="px-10 py-6 text-right">Acções</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-100">
-                                            {(investments.caixa || []).map(item => {
-                                                const rend = item.valorAtual - item.valorAplicado;
-                                                return (
-                                                    <tr key={item.id} className="hover:bg-slate-50/50 tabular text-sm">
-                                                        <td className="px-10 py-6 font-black text-slate-900 uppercase">{item.nome}</td>
-                                                        <td className="px-10 py-6 text-right font-bold text-slate-500">{format(item.valorAplicado)}</td>
-                                                        <td className="px-10 py-6 text-right font-black text-slate-900">{format(item.valorAtual)}</td>
-                                                        <td className={`px-10 py-6 text-right font-bold ${rend >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                                                            {rend >= 0 ? '+' : ''}{format(rend)}
-                                                        </td>
-                                                        <td className="px-10 py-6 text-right">
-                                                            <div className="flex justify-end gap-3">
-                                                                <button onClick={() => editItem('caixa', item.id)} className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all">
-                                                                    <LucideIcon name="Edit3" size={18} />
-                                                                </button>
-                                                                <button onClick={() => removeItem('caixa', item.id)} className="p-2 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-600 hover:text-white transition-all">
-                                                                    <LucideIcon name="Trash2" size={18} />
-                                                                </button>
-                                                            </div>
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })}
                                         </tbody>
                                     </table>
                                 </div>
