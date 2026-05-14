@@ -91,8 +91,8 @@
             return ready ? <i data-lucide={name} style={{ width: size, height: size }} className={className}></i> : <div style={{ width: size, height: size }}></div>;
         };
 
-        const StatCard = ({ title, value, icon, colorClass, isMobile }) => (
-            <div className={`glass p-5 rounded-premium flex ${isMobile ? 'flex-col items-start gap-2' : 'items-center gap-4'} min-w-0 shadow-sm hover:shadow-md transition-all`}>
+        const StatCard = ({ title, value, icon, colorClass, isMobile, subValue = null }) => (
+            <div className={`glass p-5 rounded-premium flex ${isMobile ? 'flex-col items-start gap-2' : 'items-center gap-4'} min-w-0 shadow-sm hover:shadow-md transition-all flex-1`}>
                 <div className={`${colorClass} p-3 rounded-2xl text-white shadow-lg flex-shrink-0`}>
                     <LucideIcon name={icon} size={24} />
                 </div>
@@ -101,13 +101,13 @@
                     <h3 className="text-huge font-black text-slate-900 tabular no-break">
                         {value}
                     </h3>
+                    {subValue && <p className={`text-[9px] font-bold mt-1 uppercase ${subValue.startsWith('-') ? 'text-rose-500' : 'text-emerald-500'}`}>{subValue}</p>}
                 </div>
             </div>
         );
 
         const App = () => {
             const [activeTab, setActiveTab] = useState('dashboard');
-            const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc', category: null });
             const [investments, setInvestments] = useState({ 
                 acoes: [], realEstate: [], caixa: [], alternativos: [],
                 caixaTicker: [], altFunds: [], altStocks: [], altCrypto: [], dividendos: []
@@ -148,41 +148,32 @@
                 const re = getSumTicker(investments.realEstate);
                 const caixa = getSumManual(investments.caixa) + getSumTicker(investments.caixaTicker);
                 
-                // Soma tripla dos Alternativos
-                const alt = getSumManual(investments.altFunds) + getSumTicker(investments.altStocks) + getSumTicker(investments.altCrypto);
+                const altFunds = getSumManual(investments.altFunds);
+                const altStocks = getSumTicker(investments.altStocks);
+                const altCrypto = getSumTicker(investments.altCrypto);
+                const alt = altFunds + altStocks + altCrypto;
                 
                 const dividendos = (investments.dividendos || []).reduce((acc, b) => acc + parseValue(b.valor || 0), 0);
                 
-                return { acoes, re, caixa, alt, dividendos, total: acoes + re + caixa + alt };
+                return { acoes, re, caixa, alt, altFunds, altStocks, altCrypto, dividendos, total: acoes + re + caixa + alt };
             }, [investments]);
 
-            const categoryStats = useMemo(() => {
-                if (activeTab === 'dashboard' || activeTab === 'dividendos') return null;
+            const getSectionStats = (list, type = 'ticker') => {
                 let investido = 0; let atual = 0;
-
-                const calcTicker = (list) => {
-                    investido += (list || []).reduce((acc, i) => acc + (parseValue(i.quantidade) * parseValue(i.precoMedio)), 0);
-                    atual += (list || []).reduce((acc, i) => acc + (parseValue(i.quantidade) * parseValue(i.precoAtual)), 0);
-                };
-                const calcManual = (list) => {
-                    investido += (list || []).reduce((acc, i) => acc + parseValue(i.valorAplicado), 0);
-                    atual += (list || []).reduce((acc, i) => acc + parseValue(i.valorAtual), 0);
-                };
-
-                if (activeTab === 'acoes') calcTicker(investments.acoes);
-                if (activeTab === 'realEstate') calcTicker(investments.realEstate);
-                if (activeTab === 'caixa') { calcManual(investments.caixa); calcTicker(investments.caixaTicker); }
-                if (activeTab === 'alternativos') { 
-                    calcManual(investments.altFunds); 
-                    calcTicker(investments.altStocks); 
-                    calcTicker(investments.altCrypto); 
+                if (type === 'ticker') {
+                    investido = (list || []).reduce((acc, i) => acc + (parseValue(i.quantidade) * parseValue(i.precoMedio)), 0);
+                    atual = (list || []).reduce((acc, i) => acc + (parseValue(i.quantidade) * parseValue(i.precoAtual)), 0);
+                } else {
+                    investido = (list || []).reduce((acc, i) => acc + parseValue(i.valorAplicado), 0);
+                    atual = (list || []).reduce((acc, i) => acc + parseValue(i.valorAtual), 0);
                 }
-
-                return { investido, atual, lucro: atual - investido, lucroPct: investido > 0 ? ((atual / investido) - 1) * 100 : 0 };
-            }, [investments, activeTab]);
+                const lucro = atual - investido;
+                const lucroPct = investido > 0 ? (lucro / investido) * 100 : 0;
+                return { investido, atual, lucro, lucroPct };
+            };
 
             const addManual = (cat) => {
-                const n = prompt("Nome do Ativo/Fundo:"); 
+                const n = prompt("Nome do Fundo/Ativo:"); 
                 const va = prompt("Valor Aplicado (R$):"); 
                 const vt = prompt("Valor Atual Hoje (R$):");
                 if (!n || va === null) return;
@@ -192,42 +183,24 @@
 
             const addTicker = (cat) => {
                 const isCrypto = cat === 'altCrypto';
-                const t = prompt(isCrypto ? "Moeda (ex: BTC, ETH):" : "Ticker (ex: PETR4, B5P211):");
-                const q = prompt("Quantidade (ex: 0,00229555):"); 
+                const t = prompt(isCrypto ? "Moeda (ex: BTC, ETH):" : "Ticker (ex: PETR4, BDR):");
+                const q = prompt("Quantidade (Ex: 0,00229555):"); 
                 const p = prompt("Preço Médio de Compra (R$):");
                 if (!t || !q) return;
                 const item = { id: Date.now().toString(), ticker: t.toUpperCase(), quantidade: parseValue(q), precoMedio: parseValue(p), precoAtual: parseValue(p) };
                 const updated = { ...investments, [cat]: [...(investments[cat] || []), item] }; setInvestments(updated); save(updated);
             };
 
-            const editItem = (cat, id, type = 'manual') => {
-                const list = [...(investments[cat] || [])];
-                const idx = list.findIndex(i => i.id === id);
-                if (idx === -1) return;
-                const item = list[idx];
-                if (type === 'manual') {
-                    const va = prompt("Novo Valor Aplicado:", item.valorAplicado);
-                    const vt = prompt("Novo Valor Atualizado:", item.valorAtual);
-                    if (va !== null && vt !== null) list[idx] = { ...item, valorAplicado: parseValue(va), valorAtual: parseValue(vt) };
-                } else if (type === 'ticker') {
-                    const q = prompt("Nova Quantidade:", item.quantidade.toString().replace('.', ',')); 
-                    const p = prompt("Novo Preço Médio:", item.precoMedio.toString().replace('.', ','));
-                    const pa = prompt("Novo Preço Atual:", item.precoAtual.toString().replace('.', ','));
-                    if (q !== null && p !== null) list[idx] = { ...item, quantidade: parseValue(q), precoMedio: parseValue(p), precoAtual: pa !== null ? parseValue(pa) : item.precoAtual };
-                }
-                const updated = { ...investments, [cat]: list }; setInvestments(updated); save(updated);
-            };
-
             const sync = async (cat) => {
                 const list = [...(investments[cat] || [])];
                 if (list.length === 0) return;
-                setSyncStatus(`A sincronizar ativos...`);
+                setSyncStatus(`Sincronizando cotações...`);
                 for (let i = 0; i < list.length; i++) {
                     const t = list[i].ticker.trim().toUpperCase();
-                    setSyncStatus(`A atualizar ${t}...`);
+                    setSyncStatus(`Atualizando ${t}...`);
                     try {
                         let url = `https://brapi.dev/api/quote/${t}`;
-                        if (['BTC', 'ETH', 'SOL', 'USDT', 'ADA', 'DOT', 'BNB'].includes(t) || cat === 'altCrypto') {
+                        if (['BTC', 'ETH', 'SOL', 'USDT', 'ADA', 'BNB'].includes(t) || cat === 'altCrypto') {
                             url = `https://brapi.dev/api/v2/crypto?coin=${t}&currency=BRL`;
                         }
                         const res = await fetch(url, { headers: { 'Authorization': `Bearer ${BRAPI_TOKEN}` } });
@@ -238,108 +211,84 @@
                     } catch (e) { console.error(`Erro ${t}:`, e); }
                 }
                 const updated = { ...investments, [cat]: list }; setInvestments(updated); save(updated);
-                setSyncStatus("Atualizado!"); setTimeout(() => setSyncStatus(""), 2000);
+                setSyncStatus("Pronto!"); setTimeout(() => setSyncStatus(""), 2000);
             };
 
-            const renderManualTable = (cat, title) => {
+            const renderSection = (cat, title, type = 'ticker') => {
+                const s = getSectionStats(investments[cat], type);
                 return (
-                    <div className="glass rounded-[2.5rem] overflow-hidden shadow-2xl animate-in mb-8">
-                        <div className="p-8 bg-slate-50/50 border-b flex justify-between items-center">
-                            <h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl">{title}</h2>
-                            <button onClick={() => addManual(cat)} className="bg-slate-900 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-black shadow-lg">+ Novo Lançamento</button>
-                        </div>
-                        <div className="overflow-x-auto custom-scroll">
-                            <table className="w-full text-left">
-                                <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
-                                    <tr>
-                                        <th className="px-10 py-6">Nome</th>
-                                        <th className="px-10 py-6 text-right">Vlr Aplicado</th>
-                                        <th className="px-10 py-6 text-right">Vlr Atualizado</th>
-                                        <th className="px-10 py-6 text-right">Lucro R$</th>
-                                        <th className="px-10 py-6 text-right">Lucro %</th>
-                                        <th className="px-10 py-6 text-right">Ações</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                    {(investments[cat] || []).map(item => {
-                                        const lucroVal = item.valorAtual - item.valorAplicado;
-                                        const lucroPct = item.valorAplicado > 0 ? (lucroVal / item.valorAplicado) * 100 : 0;
-                                        return (
-                                            <tr key={item.id} className="hover:bg-slate-50/50 tabular text-sm">
-                                                <td className="px-10 py-6 font-black text-slate-900 uppercase">{item.nome}</td>
-                                                <td className="px-10 py-6 text-right text-slate-500 font-bold">{formatBRL(item.valorAplicado)}</td>
-                                                <td className="px-10 py-6 text-right font-black text-blue-600">{formatBRL(item.valorAtual)}</td>
-                                                <td className={`px-10 py-6 text-right font-black ${lucroVal >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{formatBRL(lucroVal)}</td>
-                                                <td className={`px-10 py-6 text-right font-black ${lucroVal >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{lucroPct.toFixed(2)}%</td>
-                                                <td className="px-10 py-6 text-right">
-                                                    <div className="flex justify-end gap-3">
-                                                        <button onClick={() => editItem(cat, item.id, 'manual')} className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><LucideIcon name="Edit3" size={18} /></button>
-                                                        <button onClick={() => { if(confirm("Remover?")) { const u = {...investments, [cat]: investments[cat].filter(i => i.id !== item.id)}; setInvestments(u); save(u); } }} className="p-2 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-600 hover:text-white transition-all"><LucideIcon name="Trash2" size={18} /></button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                );
-            };
-
-            const renderTickerTable = (cat, title) => {
-                return (
-                    <div className="glass rounded-[2.5rem] overflow-hidden shadow-2xl animate-in mb-8">
-                        <div className="p-8 bg-slate-50/50 border-b flex justify-between items-center">
-                            <h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl">{title}</h2>
-                            <div className="flex gap-4">
-                                <button onClick={() => sync(cat)} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 shadow-lg flex items-center gap-2"><LucideIcon name="RefreshCw" size={14} /> Sincronizar</button>
-                                <button onClick={() => addTicker(cat)} className="bg-blue-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 shadow-lg">+ Adicionar Ativo</button>
+                    <div className="space-y-6 mb-16">
+                        {/* Sub-Header de Totais da Seção */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="glass p-5 rounded-3xl border-l-4 border-slate-900">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Total Investido {title}</p>
+                                <p className="text-xl font-black text-slate-800 tabular">{formatBRL(s.investido)}</p>
+                            </div>
+                            <div className="glass p-5 rounded-3xl border-l-4 border-blue-600">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Patrimônio {title}</p>
+                                <p className="text-xl font-black text-slate-800 tabular">{formatBRL(s.atual)}</p>
+                            </div>
+                            <div className={`glass p-5 rounded-3xl border-l-4 ${s.lucro >= 0 ? 'border-emerald-500' : 'border-rose-500'}`}>
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Lucro {title}</p>
+                                <p className={`text-xl font-black tabular ${s.lucro >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                    {formatBRL(s.lucro)} <span className="text-[10px]">({s.lucroPct.toFixed(2)}%)</span>
+                                </p>
                             </div>
                         </div>
-                        <div className="overflow-x-auto custom-scroll">
-                            <table className="w-full text-left">
-                                <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
-                                    <tr>
-                                        <th className="px-10 py-6">Ativo</th>
-                                        <th className="px-10 py-6 text-center">Qtd</th>
-                                        <th className="px-10 py-6">P. Compra</th>
-                                        <th className="px-10 py-6">P. Atual</th>
-                                        <th className="px-10 py-6 font-black text-slate-900">Patrimônio</th>
-                                        <th className="px-10 py-6 text-right">Lucro R$</th>
-                                        <th className="px-10 py-6 text-right">Lucro %</th>
-                                        <th className="px-10 py-6 text-right">Ações</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                    {(investments[cat] || []).map(item => {
-                                        const qty = parseValue(item.quantidade);
-                                        const totalVal = qty * item.precoAtual;
-                                        const custoTotal = qty * item.precoMedio;
-                                        const lucroVal = totalVal - custoTotal;
-                                        const lucroPct = item.precoMedio > 0 ? ((item.precoAtual / item.precoMedio) - 1) * 100 : 0;
-                                        return (
-                                            <tr key={item.id} className="hover:bg-slate-50/50 tabular text-sm">
-                                                <td className="px-10 py-6 font-black text-slate-900 uppercase">{item.ticker}</td>
-                                                <td className="px-10 py-6 text-center font-bold text-slate-500">
-                                                    {qty < 1 ? qty.toFixed(8).replace(/\.?0+$/, "") : qty.toLocaleString('pt-BR')}
-                                                </td>
-                                                <td className="px-10 py-6 text-slate-500 font-bold">{formatBRL(item.precoMedio)}</td>
-                                                <td className="px-10 py-6 font-black text-blue-600">{formatBRL(item.precoAtual)}</td>
-                                                <td className="px-10 py-6 font-black text-slate-900">{formatBRL(totalVal)}</td>
-                                                <td className={`px-10 py-6 text-right font-black ${lucroVal >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{formatBRL(lucroVal)}</td>
-                                                <td className={`px-10 py-6 text-right font-black ${lucroVal >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{lucroPct.toFixed(2)}%</td>
-                                                <td className="px-10 py-6 text-right">
-                                                    <div className="flex justify-end gap-3">
-                                                        <button onClick={() => editItem(cat, item.id, 'ticker')} className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><LucideIcon name="Edit3" size={18} /></button>
-                                                        <button onClick={() => { if(confirm("Remover?")) { const u = {...investments, [cat]: investments[cat].filter(i => i.id !== item.id)}; setInvestments(u); save(u); } }} className="p-2 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-600 hover:text-white transition-all"><LucideIcon name="Trash2" size={18} /></button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
+
+                        <div className="glass rounded-[2.5rem] overflow-hidden shadow-2xl animate-in">
+                            <div className="p-8 bg-slate-50/50 border-b flex justify-between items-center">
+                                <h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl">{title}</h2>
+                                <div className="flex gap-4">
+                                    {type === 'ticker' && <button onClick={() => sync(cat)} className="bg-emerald-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 shadow-lg flex items-center gap-2"><LucideIcon name="RefreshCw" size={14} /> Sincronizar</button>}
+                                    <button onClick={() => type === 'ticker' ? addTicker(cat) : addManual(cat)} className="bg-slate-900 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-black shadow-lg">+ Adicionar</button>
+                                </div>
+                            </div>
+                            <div className="overflow-x-auto custom-scroll">
+                                <table className="w-full text-left">
+                                    <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                                        <tr>
+                                            <th className="px-10 py-6">{type === 'ticker' ? 'Ativo' : 'Nome'}</th>
+                                            {type === 'ticker' && <th className="px-10 py-6 text-center">Qtd</th>}
+                                            <th className="px-10 py-6 text-right">{type === 'ticker' ? 'P. Compra' : 'Vlr Aplicado'}</th>
+                                            <th className="px-10 py-6 text-right">{type === 'ticker' ? 'P. Atual' : 'Vlr Atualizado'}</th>
+                                            <th className="px-10 py-6 text-right font-black text-slate-900">Patrimônio</th>
+                                            <th className="px-10 py-6 text-right">Lucro R$</th>
+                                            <th className="px-10 py-6 text-right">Lucro %</th>
+                                            <th className="px-10 py-6 text-right">Ações</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {(investments[cat] || []).map(item => {
+                                            const qty = type === 'ticker' ? parseValue(item.quantidade) : 1;
+                                            const atual = type === 'ticker' ? parseValue(item.precoAtual) : parseValue(item.valorAtual);
+                                            const custo = type === 'ticker' ? parseValue(item.precoMedio) : parseValue(item.valorAplicado);
+                                            
+                                            const totalVal = qty * atual;
+                                            const custoTotal = qty * custo;
+                                            const lucroVal = totalVal - custoTotal;
+                                            const lucroPct = custo > 0 ? (lucroVal / custoTotal) * 100 : 0;
+                                            
+                                            return (
+                                                <tr key={item.id} className="hover:bg-slate-50/50 tabular text-sm">
+                                                    <td className="px-10 py-6 font-black text-slate-900 uppercase">{type === 'ticker' ? item.ticker : item.nome}</td>
+                                                    {type === 'ticker' && <td className="px-10 py-6 text-center font-bold text-slate-500">{qty < 1 ? qty.toFixed(8).replace(/\.?0+$/, "") : qty.toLocaleString('pt-BR')}</td>}
+                                                    <td className="px-10 py-6 text-right text-slate-500 font-bold">{formatBRL(custo)}</td>
+                                                    <td className="px-10 py-6 text-right font-black text-blue-600">{formatBRL(atual)}</td>
+                                                    <td className="px-10 py-6 text-right font-black text-slate-900">{formatBRL(totalVal)}</td>
+                                                    <td className={`px-10 py-6 text-right font-black ${lucroVal >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{formatBRL(lucroVal)}</td>
+                                                    <td className={`px-10 py-6 text-right font-black ${lucroVal >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{lucroPct.toFixed(2)}%</td>
+                                                    <td className="px-10 py-6 text-right">
+                                                        <div className="flex justify-end gap-3">
+                                                            <button onClick={() => { if(confirm("Remover?")) { const u = {...investments, [cat]: investments[cat].filter(i => i.id !== item.id)}; setInvestments(u); save(u); } }} className="p-2 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-600 hover:text-white transition-all"><LucideIcon name="Trash2" size={18} /></button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 );
@@ -352,7 +301,7 @@
                             <div className="bg-slate-900 text-white p-4 rounded-[2rem] shadow-2xl"><LucideIcon name="ShieldCheck" size={32} /></div>
                             <div>
                                 <h1 className="text-3xl font-black tracking-tighter uppercase leading-none">ICARO<span className="text-blue-600">INVEST</span></h1>
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1">Management Elite v6.4</p>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1">Management Elite v7.0</p>
                             </div>
                         </div>
                         <nav className="flex bg-white p-2 rounded-[1.5rem] shadow-xl border border-slate-100 overflow-x-auto no-scrollbar max-w-full">
@@ -361,8 +310,7 @@
                                 { id: 'acoes', icon: 'TrendingUp', label: 'Ações' },
                                 { id: 'realEstate', icon: 'Home', label: 'RE' },
                                 { id: 'caixa', icon: 'Landmark', label: 'Caixa' },
-                                { id: 'alternativos', icon: 'Layers', label: 'Alt' },
-                                { id: 'dividendos', icon: 'Coins', label: 'Dividendos' }
+                                { id: 'alternativos', icon: 'Layers', label: 'Alt' }
                             ].map(t => (
                                 <button key={t.id} onClick={() => setActiveTab(t.id)} className={`flex items-center gap-2 px-6 py-3 rounded-2xl text-xs font-black transition-all whitespace-nowrap ${activeTab === t.id ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}>
                                     <LucideIcon name={t.icon} size={14} /> {t.label}
@@ -380,20 +328,28 @@
                                 <StatCard isMobile={isMobile} title="Bolsa / Ações" value={formatBRL(totals.acoes)} icon="BarChart3" colorClass="bg-blue-600" />
                                 <StatCard isMobile={isMobile} title="Real Estate" value={formatBRL(totals.re)} icon="Building2" colorClass="bg-emerald-500" />
                                 <StatCard isMobile={isMobile} title="Reserva / Caixa" value={formatBRL(totals.caixa)} icon="PiggyBank" colorClass="bg-indigo-500" />
-                                <StatCard isMobile={isMobile} title="Total Proventos" value={formatBRL(totals.dividendos)} icon="Coins" colorClass="bg-sky-500" />
+                                <StatCard isMobile={isMobile} title="Alternativos" value={formatBRL(totals.alt)} icon="Layers" colorClass="bg-rose-500" />
                             </div>
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                <StatCard isMobile={isMobile} title="Total Investido" value={formatBRL(categoryStats.investido)} icon="PiggyBank" colorClass="bg-slate-900" />
-                                <StatCard isMobile={isMobile} title={`Lucro Total (${categoryStats.lucroPct.toFixed(2)}%)`} value={formatBRL(categoryStats.lucro)} icon="TrendingUp" colorClass={categoryStats.lucro >= 0 ? "bg-emerald-500" : "bg-rose-500"} />
-                                <StatCard isMobile={isMobile} title="Patrimônio Atual" value={formatBRL(categoryStats.atual)} icon="Wallet" colorClass="bg-blue-600" />
+                                {(() => {
+                                    const catMap = { acoes: 'ticker', realEstate: 'ticker', caixa: 'manual', alternativos: 'manual' };
+                                    const s = getSectionStats(investments[activeTab], catMap[activeTab]);
+                                    return (
+                                        <>
+                                            <StatCard isMobile={isMobile} title="Total Investido" value={formatBRL(s.investido)} icon="PiggyBank" colorClass="bg-slate-900" />
+                                            <StatCard isMobile={isMobile} title="Lucro Bruto" value={formatBRL(s.lucro)} subValue={`${s.lucroPct.toFixed(2)}%`} icon="TrendingUp" colorClass={s.lucro >= 0 ? "bg-emerald-500" : "bg-rose-500"} />
+                                            <StatCard isMobile={isMobile} title="Patrimônio Atual" value={formatBRL(s.atual)} icon="Wallet" colorClass="bg-blue-600" />
+                                        </>
+                                    );
+                                })()}
                             </div>
                         )}
 
                         {activeTab === 'dashboard' && (
                             <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
                                 <div className="lg:col-span-2 glass rounded-[2.5rem] p-10 min-h-[500px] flex flex-col shadow-inner">
-                                    <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-10 text-center">Alocação de Ativos</h2>
+                                    <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-10 text-center">Alocação Estratégica</h2>
                                     <div className="flex-1 w-full">
                                         <ResponsiveContainer width="100%" height="100%">
                                             <PieChart>
@@ -426,58 +382,17 @@
                             </div>
                         )}
 
-                        {activeTab === 'acoes' && renderTickerTable('acoes', 'Carteira de Ações')}
-                        {activeTab === 'realEstate' && renderTickerTable('realEstate', 'Real Estate (FIIs)')}
-                        {activeTab === 'caixa' && <>{renderManualTable('caixa', 'Reserva e Liquidez (Manual)')}{renderTickerTable('caixaTicker', 'Renda Fixa Cotada (Tickers)')}</>}
-                        
                         {activeTab === 'alternativos' && (
-                            <>
-                                {renderManualTable('altFunds', 'Fundos de Investimentos (Manual)')}
-                                {renderTickerTable('altStocks', 'Ações Alternativas (Ticker)')}
-                                {renderTickerTable('altCrypto', 'Criptomoedas (Alta Precisão)')}
-                            </>
-                        )}
-
-                        {activeTab === 'dividendos' && (
-                            <div className="glass rounded-[2.5rem] overflow-hidden shadow-2xl animate-in">
-                                <div className="p-8 bg-slate-50/50 border-b flex justify-between items-center">
-                                    <h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl">Histórico de Proventos</h2>
-                                    <button onClick={() => {
-                                        const d = prompt("Data (DD/MM/AAAA):", new Date().toLocaleDateString('pt-BR'));
-                                        const a = prompt("Ativo:");
-                                        const v = prompt("Valor (R$):");
-                                        if (a && v) {
-                                            const updated = { ...investments, dividendos: [...(investments.dividendos || []), { id: Date.now().toString(), data: d, ativo: a.toUpperCase(), valor: parseValue(v) }] };
-                                            setInvestments(updated); save(updated);
-                                        }
-                                    }} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 shadow-lg">+ Lançar Provento</button>
-                                </div>
-                                <div className="overflow-x-auto custom-scroll">
-                                    <table className="w-full text-left">
-                                        <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
-                                            <tr>
-                                                <th className="px-10 py-6">Data</th>
-                                                <th className="px-10 py-6">Ativo</th>
-                                                <th className="px-10 py-6 text-right">Valor</th>
-                                                <th className="px-10 py-6 text-right">Ações</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-100">
-                                            {(investments.dividendos || []).map(item => (
-                                                <tr key={item.id} className="hover:bg-slate-50/50 tabular text-sm">
-                                                    <td className="px-10 py-6 font-bold text-slate-500">{item.data}</td>
-                                                    <td className="px-10 py-6 font-black text-slate-900 uppercase">{item.ativo}</td>
-                                                    <td className="px-10 py-6 text-right font-black text-emerald-600">{formatBRL(item.valor)}</td>
-                                                    <td className="px-10 py-6 text-right">
-                                                        <button onClick={() => { if(confirm("Remover?")) { const u = {...investments, dividendos: investments.dividendos.filter(i => i.id !== item.id)}; setInvestments(u); save(u); } }} className="p-2 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-600 hover:text-white transition-all"><LucideIcon name="Trash2" size={18} /></button>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
+                            <div className="space-y-20">
+                                {renderSection('altFunds', 'Fundos de Investimentos', 'manual')}
+                                {renderSection('altStocks', 'Ações Alternativas', 'ticker')}
+                                {renderSection('altCrypto', 'Criptomoedas (Alta Precisão)', 'ticker')}
                             </div>
                         )}
+                        
+                        {activeTab === 'acoes' && renderTickerTable('acoes', 'Carteira Principal de Ações')}
+                        {activeTab === 'realEstate' && renderTickerTable('realEstate', 'Real Estate (FIIs)')}
+                        {activeTab === 'caixa' && renderSection('caixa', 'Reserva e Liquidez', 'manual')}
                     </main>
                     <footer className="mt-20 py-10 text-center border-t border-slate-100 text-[10px] font-black text-slate-300 uppercase tracking-[0.5em]">IcaroInvest Management Systems &copy; 2026</footer>
                 </div>
