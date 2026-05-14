@@ -135,12 +135,26 @@
             );
         };
 
+        const StatHeaderCard = ({ title, value, icon, colorClass, isMobile, subValue = null }) => (
+            <div className={`glass p-5 rounded-premium flex ${isMobile ? 'flex-col items-start gap-2' : 'items-center gap-4'} min-w-0 shadow-sm hover:shadow-md transition-all flex-1`}>
+                <div className={`${colorClass} p-3 rounded-2xl text-white shadow-lg flex-shrink-0`}>
+                    <LucideIcon name={icon} size={24} />
+                </div>
+                <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1 truncate">{title}</p>
+                    <h3 className="text-huge font-black text-slate-900 tabular no-break">{value}</h3>
+                    {subValue && <p className={`text-[9px] font-bold mt-1 uppercase ${subValue.startsWith('-') ? 'text-rose-500' : 'text-emerald-500'}`}>{subValue}</p>}
+                </div>
+            </div>
+        );
+
         const App = () => {
             const [activeTab, setActiveTab] = useState('dashboard');
             const [investments, setInvestments] = useState({ 
                 acoes: [], realEstate: [], caixa: [], alternativos: [],
                 caixaTicker: [], altFunds: [], altStocks: [], altCrypto: [], dividendos: []
             });
+            const [syncStatus, setSyncStatus] = useState("");
             const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
             useEffect(() => {
@@ -168,48 +182,133 @@
                 await setDoc(doc(db, 'investments', 'portfolio_principal'), newData);
             };
 
-            const getAggregateStats = (category) => {
-                const getManual = (arr) => (arr || []).reduce((acc, i) => ({ 
-                    inv: acc.inv + parseValue(i.valorAplicado), 
-                    atu: acc.atu + parseValue(i.valorAtual) 
-                }), { inv: 0, atu: 0 });
-
-                const getTicker = (arr) => (arr || []).reduce((acc, i) => ({ 
-                    inv: acc.inv + (parseValue(i.quantidade) * parseValue(i.precoMedio)), 
-                    atu: acc.atu + (parseValue(i.quantidade) * parseValue(i.precoAtual)) 
-                }), { inv: 0, atu: 0 });
-
-                let data = { inv: 0, atu: 0 };
-
-                if (category === 'acoes') data = getTicker(investments.acoes);
-                if (category === 're') data = getTicker(investments.realEstate);
-                if (category === 'caixa') {
-                    const m = getManual(investments.caixa);
-                    const t = getTicker(investments.caixaTicker);
-                    data = { inv: m.inv + t.inv, atu: m.atu + t.atu };
+            const getSectionStats = (list, type = 'ticker') => {
+                let investido = 0; let atual = 0;
+                if (type === 'ticker') {
+                    investido = (list || []).reduce((acc, i) => acc + (parseValue(i.quantidade) * parseValue(i.precoMedio)), 0);
+                    atual = (list || []).reduce((acc, i) => acc + (parseValue(i.quantidade) * parseValue(i.precoAtual)), 0);
+                } else {
+                    investido = (list || []).reduce((acc, i) => acc + parseValue(i.valorAplicado), 0);
+                    atual = (list || []).reduce((acc, i) => acc + parseValue(i.valorAtual), 0);
                 }
-                if (category === 'alt') {
-                    const f = getManual(investments.altFunds);
-                    const s = getTicker(investments.altStocks);
-                    const c = getTicker(investments.altCrypto);
-                    data = { inv: f.inv + s.inv + c.inv, atu: f.atu + s.atu + c.atu };
-                }
-
-                const lucro = data.atu - data.inv;
-                const lucroPct = data.inv > 0 ? (lucro / data.inv) * 100 : 0;
-
-                return { investido: data.inv, atual: data.atu, lucro, lucroPct };
+                const lucro = atual - investido;
+                const lucroPct = investido > 0 ? (lucro / investido) * 100 : 0;
+                return { investido, atual, lucro, lucroPct };
             };
 
             const totals = useMemo(() => {
-                const acoes = getAggregateStats('acoes');
-                const re = getAggregateStats('re');
-                const caixa = getAggregateStats('caixa');
-                const alt = getAggregateStats('alt');
-                const total = acoes.atual + re.atual + caixa.atual + alt.atual;
+                const acoes = getSectionStats(investments.acoes, 'ticker');
+                const re = getSectionStats(investments.realEstate, 'ticker');
+                
+                const sCaixaM = getSectionStats(investments.caixa, 'manual');
+                const sCaixaT = getSectionStats(investments.caixaTicker, 'ticker');
+                const caixa = { investido: sCaixaM.investido + sCaixaT.investido, atual: sCaixaM.atual + sCaixaT.atual };
+                caixa.lucro = caixa.atual - caixa.investido;
+                caixa.lucroPct = caixa.investido > 0 ? (caixa.lucro / caixa.investido) * 100 : 0;
 
+                const sAltF = getSectionStats(investments.altFunds, 'manual');
+                const sAltS = getSectionStats(investments.altStocks, 'ticker');
+                const sAltC = getSectionStats(investments.altCrypto, 'ticker');
+                const alt = { investido: sAltF.investido + sAltS.investido + sAltC.investido, atual: sAltF.atual + sAltS.atual + sAltC.atual };
+                alt.lucro = alt.atual - alt.investido;
+                alt.lucroPct = alt.investido > 0 ? (alt.lucro / alt.investido) * 100 : 0;
+
+                const total = acoes.atual + re.atual + caixa.atual + alt.atual;
                 return { acoes, re, caixa, alt, total };
             }, [investments]);
+
+            const addManual = (cat) => {
+                const n = prompt("Nome do Ativo:");
+                const va = prompt("Valor Aplicado (R$):");
+                const vt = prompt("Valor Atual Hoje (R$):");
+                if (!n || va === null) return;
+                const item = { id: Date.now().toString(), nome: n, valorAplicado: parseValue(va), valorAtual: parseValue(vt || va) };
+                const updated = { ...investments, [cat]: [...(investments[cat] || []), item] };
+                setInvestments(updated); save(updated);
+            };
+
+            const addTicker = (cat) => {
+                const t = prompt("Ticker / Código:");
+                const q = prompt("Quantidade:");
+                const p = prompt("Preço Médio:");
+                if (!t || !q) return;
+                const item = { id: Date.now().toString(), ticker: t.toUpperCase(), quantidade: parseValue(q), precoMedio: parseValue(p), precoAtual: parseValue(p) };
+                const updated = { ...investments, [cat]: [...(investments[cat] || []), item] };
+                setInvestments(updated); save(updated);
+            };
+
+            const sync = async (cat) => {
+                const list = [...(investments[cat] || [])];
+                if (list.length === 0) return;
+                setSyncStatus(`A atualizar cotações...`);
+                for (let i = 0; i < list.length; i++) {
+                    const t = list[i].ticker.trim().toUpperCase();
+                    try {
+                        let url = `https://brapi.dev/api/quote/${t}`;
+                        if (cat === 'altCrypto' || ['BTC', 'ETH', 'SOL'].includes(t)) {
+                            url = `https://brapi.dev/api/v2/crypto?coin=${t}&currency=BRL`;
+                        }
+                        const res = await fetch(url, { headers: { 'Authorization': `Bearer ${BRAPI_TOKEN}` } });
+                        const d = await res.json();
+                        if (d.coins?.[0]) list[i].precoAtual = d.coins[0].regularMarketPrice;
+                        else if (d.results?.[0]) list[i].precoAtual = d.results[0].regularMarketPrice;
+                        await new Promise(r => setTimeout(r, 400));
+                    } catch (e) { console.error(e); }
+                }
+                const updated = { ...investments, [cat]: list }; setInvestments(updated); save(updated);
+                setSyncStatus("Pronto!"); setTimeout(() => setSyncStatus(""), 2000);
+            };
+
+            const renderTableSection = (cat, title, type = 'ticker') => (
+                <div className="glass rounded-[2.5rem] overflow-hidden shadow-2xl animate-in mb-10">
+                    <div className="p-8 bg-slate-50/50 border-b flex justify-between items-center">
+                        <h2 className="font-black text-slate-800 uppercase tracking-tighter text-2xl">{title}</h2>
+                        <div className="flex gap-4">
+                            {type === 'ticker' && <button onClick={() => sync(cat)} className="bg-emerald-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 shadow-lg flex items-center gap-2"><LucideIcon name="RefreshCw" size={14} /> Sincronizar</button>}
+                            <button onClick={() => type === 'ticker' ? addTicker(cat) : addManual(cat)} className="bg-slate-900 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-black shadow-lg">+ Adicionar</button>
+                        </div>
+                    </div>
+                    <div className="overflow-x-auto custom-scroll">
+                        <table className="w-full text-left">
+                            <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                                <tr>
+                                    <th className="px-10 py-6">{type === 'ticker' ? 'Ativo' : 'Nome'}</th>
+                                    {type === 'ticker' && <th className="px-10 py-6 text-center">Qtd</th>}
+                                    <th className="px-10 py-6 text-right">{type === 'ticker' ? 'P. Compra' : 'Vlr Aplicado'}</th>
+                                    <th className="px-10 py-6 text-right">{type === 'ticker' ? 'P. Atual' : 'Vlr Atualizado'}</th>
+                                    <th className="px-10 py-6 text-right font-black text-slate-900">Patrimônio</th>
+                                    <th className="px-10 py-6 text-right">Lucro R$</th>
+                                    <th className="px-10 py-6 text-right">Lucro %</th>
+                                    <th className="px-10 py-6 text-right">Ação</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {(investments[cat] || []).map(item => {
+                                    const qty = type === 'ticker' ? parseValue(item.quantidade) : 1;
+                                    const atual = type === 'ticker' ? parseValue(item.precoAtual) : parseValue(item.valorAtual);
+                                    const custo = type === 'ticker' ? parseValue(item.precoMedio) : parseValue(item.valorAplicado);
+                                    const totalVal = qty * atual; const custoTotal = qty * custo;
+                                    const lucroVal = totalVal - custoTotal; const lucroPct = custoTotal > 0 ? (lucroVal / custoTotal) * 100 : 0;
+                                    return (
+                                        <tr key={item.id} className="hover:bg-slate-50/50 tabular text-sm">
+                                            <td className="px-10 py-6 font-black text-slate-900 uppercase">{type === 'ticker' ? item.ticker : item.nome}</td>
+                                            {type === 'ticker' && <td className="px-10 py-6 text-center font-bold text-slate-500">{qty < 1 ? qty.toFixed(8).replace(/\.?0+$/, "") : qty.toLocaleString('pt-BR')}</td>}
+                                            <td className="px-10 py-6 text-right text-slate-500 font-bold">{formatBRL(custo)}</td>
+                                            <td className="px-10 py-6 text-right font-black text-blue-600">{formatBRL(atual)}</td>
+                                            <td className="px-10 py-6 text-right font-black text-slate-900">{formatBRL(totalVal)}</td>
+                                            <td className={`px-10 py-6 text-right font-black ${lucroVal >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{formatBRL(lucroVal)}</td>
+                                            <td className={`px-10 py-6 text-right font-black ${lucroVal >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{lucroPct.toFixed(2)}%</td>
+                                            <td className="px-10 py-6 text-right">
+                                                <button onClick={() => { if(confirm("Eliminar?")) { const u = {...investments, [cat]: investments[cat].filter(i => i.id !== item.id)}; setInvestments(u); save(u); } }} className="p-2 text-rose-500 hover:bg-rose-50 rounded-xl transition-all"><LucideIcon name="Trash2" size={18} /></button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
 
             return (
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-32">
@@ -236,7 +335,8 @@
                         </nav>
                     </header>
 
-                    {}
+                    {syncStatus && <div className="fixed top-10 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white px-8 py-3 rounded-full shadow-2xl text-[10px] font-black uppercase tracking-widest animate-in">{syncStatus}</div>}
+
                     <main className="space-y-10 animate-in">
                         {activeTab === 'dashboard' ? (
                             <>
@@ -272,15 +372,7 @@
                                         <div className="flex-1 w-full">
                                             <ResponsiveContainer width="100%" height="100%">
                                                 <PieChart>
-                                                    <Pie 
-                                                        data={[
-                                                            { name: 'Ações', value: totals.acoes.atual }, 
-                                                            { name: 'RE', value: totals.re.atual }, 
-                                                            { name: 'Caixa', value: totals.caixa.atual }, 
-                                                            { name: 'Alt', value: totals.alt.atual }
-                                                        ].filter(d => d.value > 0)} 
-                                                        innerRadius={80} outerRadius={140} paddingAngle={8} dataKey="value" stroke="none" cornerRadius={12}
-                                                    >
+                                                    <Pie data={[{ name: 'Ações', value: totals.acoes.atual }, { name: 'RE', value: totals.re.atual }, { name: 'Caixa', value: totals.caixa.atual }, { name: 'Alt', value: totals.alt.atual }].filter(d => d.value > 0)} innerRadius={80} outerRadius={140} paddingAngle={8} dataKey="value" stroke="none" cornerRadius={12}>
                                                         {COLORS.map((c, i) => <Cell key={i} fill={c} />)}
                                                     </Pie>
                                                     <Tooltip contentStyle={{ borderRadius: '1.5rem', border: 'none', boxShadow: '0 25px 50px rgba(0,0,0,0.1)', fontBold: '900' }} formatter={(v) => formatBRL(v)} />
@@ -288,8 +380,6 @@
                                             </ResponsiveContainer>
                                         </div>
                                     </div>
-
-                                    {/* COLUNA DE RESUMOS DETALHADOS (image_d9025c.png) */}
                                     <div className="flex flex-col gap-5 h-full">
                                         <CategoryDetailCard label="Bolsa / Ações" stats={totals.acoes} totalPortfolio={totals.total} color={COLORS[0]} icon="BarChart3" />
                                         <CategoryDetailCard label="Real Estate" stats={totals.re} totalPortfolio={totals.total} color={COLORS[1]} icon="Building2" />
@@ -299,8 +389,67 @@
                                 </div>
                             </>
                         ) : (
-                            <div className="p-10 glass rounded-[2.5rem] text-center text-slate-400 font-bold italic">
-                                Navegue pelas abas superiores para gerenciar os seus ativos.
+                            <div className="space-y-6">
+                                {(() => {
+                                    const s = activeTab === 'alternativos' ? totals.alt : 
+                                              activeTab === 'acoes' ? totals.acoes :
+                                              activeTab === 'realEstate' ? totals.re : totals.caixa;
+                                    return (
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+                                            <StatHeaderCard isMobile={isMobile} title="Total Investido" value={formatBRL(s.investido)} icon="PiggyBank" colorClass="bg-slate-900" />
+                                            <StatHeaderCard isMobile={isMobile} title="Lucro Bruto" value={formatBRL(s.lucro)} subValue={`${s.lucroPct.toFixed(2)}%`} icon="TrendingUp" colorClass={s.lucro >= 0 ? "bg-emerald-500" : "bg-rose-500"} />
+                                            <StatHeaderCard isMobile={isMobile} title="Patrimônio Atual" value={formatBRL(s.atual)} icon="Wallet" colorClass="bg-blue-600" />
+                                        </div>
+                                    );
+                                })()}
+                                
+                                {activeTab === 'acoes' && renderTableSection('acoes', 'Carteira Principal de Ações', 'ticker')}
+                                {activeTab === 'realEstate' && renderTableSection('realEstate', 'Real Estate (FIIs)', 'ticker')}
+                                {activeTab === 'caixa' && (
+                                    <div className="space-y-10">
+                                        {renderTableSection('caixa', 'Gestão Manual de Saldo', 'manual')}
+                                        {renderTableSection('caixaTicker', 'Ativos Cotados / Tickers', 'ticker')}
+                                    </div>
+                                )}
+                                {activeTab === 'alternativos' && (
+                                    <div className="space-y-10">
+                                        {}
+                                        <div className="space-y-4">
+                                            <CategoryDetailCard 
+                                                label="Fundos de Investimento" 
+                                                stats={getSectionStats(investments.altFunds, 'manual')} 
+                                                totalPortfolio={totals.alt} 
+                                                color="#8b5cf6" 
+                                                icon="Briefcase" 
+                                            />
+                                            {renderTableSection('altFunds', 'Listagem de Fundos', 'manual')}
+                                        </div>
+
+                                        {}
+                                        <div className="space-y-4">
+                                            <CategoryDetailCard 
+                                                label="Ações Alternativas" 
+                                                stats={getSectionStats(investments.altStocks, 'ticker')} 
+                                                totalPortfolio={totals.alt} 
+                                                color="#2563eb" 
+                                                icon="TrendingUp" 
+                                            />
+                                            {renderTableSection('altStocks', 'Listagem de Ações Alt', 'ticker')}
+                                        </div>
+
+                                        {}
+                                        <div className="space-y-4">
+                                            <CategoryDetailCard 
+                                                label="Criptomoedas" 
+                                                stats={getSectionStats(investments.altCrypto, 'ticker')} 
+                                                totalPortfolio={totals.alt} 
+                                                color="#f59e0b" 
+                                                icon="Coins" 
+                                            />
+                                            {renderTableSection('altCrypto', 'Listagem de Criptos (Alta Precisão)', 'ticker')}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </main>
