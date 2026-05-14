@@ -19,7 +19,7 @@
         .no-scrollbar::-webkit-scrollbar { display: none; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .animate-in { animation: fadeIn 0.4s ease-out forwards; }
-        .custom-scroll::-webkit-scrollbar { height: 4px; }
+        .custom-scroll::-webkit-scrollbar { height: 4px; width: 4px; }
         .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         th.sortable { cursor: pointer; user-select: none; transition: background-color 0.2s; }
         th.sortable:hover { background-color: rgba(0,0,0,0.05); }
@@ -30,7 +30,7 @@
         <div class="flex items-center justify-center min-h-screen">
             <div class="text-center">
                 <div class="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">A processar Sistema Elite v7.6...</p>
+                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">Sincronizando IcaroInvest Elite...</p>
             </div>
         </div>
     </div>
@@ -182,7 +182,7 @@
                 const entry = {
                     id: Date.now().toString(),
                     data: dataHoje,
-                    geral: { investido: totals.acoes.investido + totals.re.investido + totals.caixa.investido + totals.alt.investido, atual: totals.total },
+                    geral: { ...totals, atual: totals.total, investido: totals.acoes.investido + totals.re.investido + totals.caixa.investido + totals.alt.investido },
                     acoes: { ...totals.acoes },
                     re: { ...totals.re },
                     caixa: { ...totals.caixa },
@@ -192,12 +192,6 @@
                 setInvestments(updated);
                 save(updated);
                 setSyncStatus("Snapshot salvo!"); setTimeout(() => setSyncStatus(""), 2000);
-            };
-
-            const handleSort = (key) => {
-                let direction = 'asc';
-                if (sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc';
-                setSortConfig({ key, direction });
             };
 
             const sortData = (data) => {
@@ -234,7 +228,7 @@
                             <table className="w-full text-left">
                                 <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
                                     <tr>
-                                        <th onClick={() => handleSort(type === 'ticker' ? 'ticker' : 'nome')} className="px-10 py-6 sortable">Ativo</th>
+                                        <th className="px-10 py-6">Ativo</th>
                                         {type === 'ticker' && <th className="px-10 py-6 text-center">Qtd</th>}
                                         <th className="px-10 py-6 text-right">Custo</th>
                                         <th className="px-10 py-6 text-right">Atual</th>
@@ -258,7 +252,18 @@
                                                 <td className="px-10 py-6 text-right font-black text-slate-900">{formatBRL(pat)}</td>
                                                 <td className={`px-10 py-6 text-right font-black ${lucro >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{formatBRL(lucro)}</td>
                                                 <td className="px-10 py-6 text-right">
-                                                    <button onClick={() => { if(confirm("Remover?")) { const u = {...investments, [cat]: investments[cat].filter(i => i.id !== item.id)}; setInvestments(u); save(u); } }} className="text-rose-500"><LucideIcon name="Trash2" size={18}/></button>
+                                                    <div className="flex justify-end gap-2">
+                                                        <button onClick={() => {
+                                                            if(type === 'ticker') {
+                                                                const q = prompt("Nova Qtd:", item.quantidade); const p = prompt("Novo P. Médio:", item.precoMedio);
+                                                                if(q && p) { const u = {...investments, [cat]: investments[cat].map(i => i.id === item.id ? {...i, quantidade: parseValue(q), precoMedio: parseValue(p)} : i)}; setInvestments(u); save(u); }
+                                                            } else {
+                                                                const va = prompt("Novo Vlr Aplicado:", item.valorAplicado); const vt = prompt("Novo Vlr Atual:", item.valorAtual);
+                                                                if(va && vt) { const u = {...investments, [cat]: investments[cat].map(i => i.id === item.id ? {...i, valorAplicado: parseValue(va), valorAtual: parseValue(vt)} : i)}; setInvestments(u); save(u); }
+                                                            }
+                                                        }} className="text-blue-500"><LucideIcon name="Edit3" size={18}/></button>
+                                                        <button onClick={() => { if(confirm("Remover?")) { const u = {...investments, [cat]: investments[cat].filter(i => i.id !== item.id)}; setInvestments(u); save(u); } }} className="text-rose-500"><LucideIcon name="Trash2" size={18}/></button>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         );
@@ -295,7 +300,7 @@
                             <div className="bg-slate-900 text-white p-4 rounded-[2rem] shadow-2xl"><LucideIcon name="ShieldCheck" size={32} /></div>
                             <div>
                                 <h1 className="text-3xl font-black tracking-tighter uppercase leading-none">ICARO<span className="text-blue-600">INVEST</span></h1>
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1">Management Elite v7.6</p>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1">Management Elite v7.7</p>
                             </div>
                         </div>
                         <nav className="flex bg-white p-2 rounded-[1.5rem] shadow-xl border border-slate-100 overflow-x-auto no-scrollbar max-w-full">
@@ -319,12 +324,64 @@
 
                     <main className="space-y-10 animate-in">
                         {activeTab === 'dashboard' ? (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-                                <StatCard isMobile={isMobile} title="Patrimônio Total" value={formatBRL(totals.total)} icon="Wallet" colorClass="bg-slate-900" />
-                                <StatCard isMobile={isMobile} title="Bolsa / Ações" value={formatBRL(totals.acoes.atual)} icon="BarChart3" colorClass="bg-blue-600" />
-                                <StatCard isMobile={isMobile} title="Real Estate" value={formatBRL(totals.re.atual)} icon="Building2" colorClass="bg-emerald-500" />
-                                <StatCard isMobile={isMobile} title="Reserva / Caixa" value={formatBRL(totals.caixa.atual)} icon="PiggyBank" colorClass="bg-indigo-500" />
-                                <StatCard isMobile={isMobile} title="Alternativos" value={formatBRL(totals.alt.atual)} icon="Layers" colorClass="bg-rose-500" />
+                            <div className="space-y-10">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                                    <StatCard isMobile={isMobile} title="Patrimônio Total" value={formatBRL(totals.total)} icon="Wallet" colorClass="bg-slate-900" />
+                                    <StatCard isMobile={isMobile} title="Bolsa / Ações" value={formatBRL(totals.acoes.atual)} icon="BarChart3" colorClass="bg-blue-600" />
+                                    <StatCard isMobile={isMobile} title="Real Estate" value={formatBRL(totals.re.atual)} icon="Building2" colorClass="bg-emerald-500" />
+                                    <StatCard isMobile={isMobile} title="Reserva / Caixa" value={formatBRL(totals.caixa.atual)} icon="PiggyBank" colorClass="bg-indigo-500" />
+                                    <StatCard isMobile={isMobile} title="Alternativos" value={formatBRL(totals.alt.atual)} icon="Layers" colorClass="bg-rose-500" />
+                                </div>
+                                
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+                                    <div className="lg:col-span-2 glass rounded-[2.5rem] p-10 min-h-[500px] flex flex-col">
+                                        <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-10 text-center">Alocação de Ativos</h2>
+                                        <div className="flex-1 w-full">
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <PieChart>
+                                                    <Pie data={[{ name: 'Ações', value: totals.acoes.atual }, { name: 'RE', value: totals.re.atual }, { name: 'Caixa', value: totals.caixa.atual }, { name: 'Alt', value: totals.alt.atual }].filter(d => d.value > 0)} innerRadius={80} outerRadius={140} paddingAngle={8} dataKey="value" stroke="none" cornerRadius={12}>
+                                                        {COLORS.map((c, i) => <Cell key={i} fill={c} />)}
+                                                    </Pie>
+                                                    <Tooltip contentStyle={{ borderRadius: '1.5rem', border: 'none', boxShadow: '0 25px 50px rgba(0,0,0,0.1)', fontWeight: '900' }} formatter={(v) => formatBRL(v)} />
+                                                </PieChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                    </div>
+                                    <div className="glass rounded-[2.5rem] p-10">
+                                        <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-8">Composição</h2>
+                                        <div className="space-y-4">
+                                            {[
+                                                { label: 'Ações', v: totals.acoes, color: COLORS[1] },
+                                                { label: 'Real Estate', v: totals.re, color: COLORS[2] },
+                                                { label: 'Caixa', v: totals.caixa, color: COLORS[3] },
+                                                { label: 'Alternativos', v: totals.alt, color: COLORS[4] }
+                                            ].map(item => (
+                                                <div key={item.label} className="p-5 bg-slate-50/50 rounded-3xl border border-slate-100">
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-3 h-3 rounded-full" style={{ background: item.color }}></div>
+                                                            <span className="font-bold text-slate-700 text-sm uppercase">{item.label}</span>
+                                                        </div>
+                                                        <span className="text-[10px] font-black text-slate-400">{((item.v.atual / (totals.total || 1)) * 100).toFixed(1)}%</span>
+                                                    </div>
+                                                    <div className="flex justify-between items-end">
+                                                        <div>
+                                                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Investido</p>
+                                                            <p className="font-bold text-xs">{formatBRL(item.v.investido)}</p>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Valor Atual</p>
+                                                            <p className="font-black text-sm text-slate-900">{formatBRL(item.v.atual)}</p>
+                                                            <p className={`text-[9px] font-bold ${item.v.lucro >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                                                {item.v.lucro >= 0 ? '+' : ''}{item.v.lucroPct.toFixed(2)}%
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         ) : activeTab === 'historico' ? (
                             <div className="space-y-10">
@@ -336,8 +393,8 @@
                                     <table className="w-full text-left">
                                         <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
                                             <tr>
-                                                <th className="px-10 py-6 sticky left-0 bg-slate-50">Data / Snapshot</th>
-                                                {(investments.historico || []).map(h => <th key={h.id} className="px-10 py-6 text-center bg-slate-100/30 min-w-[200px] border-l border-slate-200">{h.data}</th>)}
+                                                <th className="px-10 py-6 sticky left-0 bg-slate-50 z-10 border-r">Data / Snapshot</th>
+                                                {(investments.historico || []).map(h => <th key={h.id} className="px-10 py-6 text-center bg-slate-100/30 min-w-[220px] border-l border-slate-200">{h.data}</th>)}
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100 tabular">
@@ -349,15 +406,28 @@
                                                 { label: 'Alternativos', key: 'alt', color: 'text-rose-500' }
                                             ].map(cat => (
                                                 <tr key={cat.key} className="hover:bg-slate-50/50">
-                                                    <td className="px-10 py-6 font-black text-xs uppercase sticky left-0 bg-white shadow-sm">{cat.label}</td>
-                                                    {(investments.historico || []).map(h => (
-                                                        <td key={h.id + cat.key} className="px-10 py-6 border-l border-slate-50">
-                                                            <div className="flex flex-col gap-1">
-                                                                <span className={`font-black ${cat.color}`}>{formatBRL(h[cat.key].atual)}</span>
-                                                                {h[cat.key].investido && <span className="text-[9px] text-slate-400 font-bold uppercase">Custo: {formatBRL(h[cat.key].investido)}</span>}
-                                                            </div>
-                                                        </td>
-                                                    ))}
+                                                    <td className="px-10 py-6 font-black text-xs uppercase sticky left-0 bg-white shadow-sm border-r z-10">{cat.label}</td>
+                                                    {(investments.historico || []).map(h => {
+                                                        const data = h[cat.key];
+                                                        const lucro = data.lucro ?? (data.atual - data.investido);
+                                                        const pct = data.lucroPct ?? (data.investido > 0 ? (lucro / data.investido) * 100 : 0);
+                                                        return (
+                                                            <td key={h.id + cat.key} className="px-10 py-6 border-l border-slate-50">
+                                                                <div className="flex flex-col gap-1">
+                                                                    <div className="flex justify-between items-center">
+                                                                        <span className={`font-black ${cat.color}`}>{formatBRL(data.atual)}</span>
+                                                                        <button onClick={() => { if(confirm("Apagar este snapshot?")) { const u = {...investments, historico: investments.historico.filter(x => x.id !== h.id)}; setInvestments(u); save(u); } }} className="text-[8px] text-slate-300 hover:text-rose-500 uppercase font-black">Remover</button>
+                                                                    </div>
+                                                                    <div className="flex justify-between text-[8px] font-black uppercase tracking-widest mt-1">
+                                                                        <span className="text-slate-400">Investido: {formatBRL(data.investido)}</span>
+                                                                        <span className={lucro >= 0 ? 'text-emerald-500' : 'text-rose-500'}>
+                                                                            {lucro >= 0 ? '+' : ''}{formatBRL(lucro)} ({pct.toFixed(2)}%)
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                        );
+                                                    })}
                                                 </tr>
                                             ))}
                                         </tbody>
@@ -408,10 +478,18 @@
                             <div className="space-y-10">
                                 {(() => {
                                     let s;
-                                    if (activeTab === 'alternativos') s = totals.alt;
-                                    else if (activeTab === 'acoes') s = totals.acoes;
-                                    else if (activeTab === 'realEstate') s = totals.re;
-                                    else s = totals.caixa;
+                                    if (activeTab === 'alternativos') {
+                                        const sF = getSectionStats(investments.altFunds, 'manual');
+                                        const sS = getSectionStats(investments.altStocks, 'ticker');
+                                        const sC = getSectionStats(investments.altCrypto, 'ticker');
+                                        const inv = sF.investido + sS.investido + sC.investido;
+                                        const atu = sF.atual + sS.atual + sC.atual;
+                                        const luc = atu - inv;
+                                        s = { investido: inv, atual: atu, lucro: luc, lucroPct: inv > 0 ? (luc / inv) * 100 : 0 };
+                                    } else {
+                                        const catMap = { acoes: 'ticker', realEstate: 'ticker', caixa: 'manual' };
+                                        s = getSectionStats(investments[activeTab], catMap[activeTab]);
+                                    }
                                     return (
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                             <StatCard isMobile={isMobile} title="Total Investido" value={formatBRL(s.investido)} icon="PiggyBank" colorClass="bg-slate-900" />
