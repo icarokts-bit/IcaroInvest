@@ -200,7 +200,7 @@
                     setSyncStatus(`Atualizando ${t}...`);
                     try {
                         let url = `https://brapi.dev/api/quote/${t}`;
-                        if (['BTC', 'ETH', 'SOL', 'USDT', 'ADA', 'BNB'].includes(t) || cat === 'altCrypto') {
+                        if (['BTC', 'ETH', 'SOL', 'USDT', 'ADA', 'BNB', 'DOGE', 'XRP'].includes(t) || cat === 'altCrypto') {
                             url = `https://brapi.dev/api/v2/crypto?coin=${t}&currency=BRL`;
                         }
                         const res = await fetch(url, { headers: { 'Authorization': `Bearer ${BRAPI_TOKEN}` } });
@@ -221,7 +221,7 @@
                         {/* Sub-Header de Totais da Seção */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div className="glass p-5 rounded-3xl border-l-4 border-slate-900">
-                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Total Investido {title}</p>
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Investido em {title}</p>
                                 <p className="text-xl font-black text-slate-800 tabular">{formatBRL(s.investido)}</p>
                             </div>
                             <div className="glass p-5 rounded-3xl border-l-4 border-blue-600">
@@ -267,7 +267,7 @@
                                             const totalVal = qty * atual;
                                             const custoTotal = qty * custo;
                                             const lucroVal = totalVal - custoTotal;
-                                            const lucroPct = custo > 0 ? (lucroVal / custoTotal) * 100 : 0;
+                                            const lucroPct = custoTotal > 0 ? (lucroVal / custoTotal) * 100 : 0;
                                             
                                             return (
                                                 <tr key={item.id} className="hover:bg-slate-50/50 tabular text-sm">
@@ -333,8 +333,24 @@
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                 {(() => {
-                                    const catMap = { acoes: 'ticker', realEstate: 'ticker', caixa: 'manual', alternativos: 'manual' };
-                                    const s = getSectionStats(investments[activeTab], catMap[activeTab]);
+                                    let s;
+                                    if (activeTab === 'alternativos') {
+                                        // Consolidação total para a aba Alternativos (Funds + Stocks + Crypto)
+                                        const sFunds = getSectionStats(investments.altFunds, 'manual');
+                                        const sStocks = getSectionStats(investments.altStocks, 'ticker');
+                                        const sCrypto = getSectionStats(investments.altCrypto, 'ticker');
+                                        
+                                        const investido = sFunds.investido + sStocks.investido + sCrypto.investido;
+                                        const atual = sFunds.atual + sStocks.atual + sCrypto.atual;
+                                        const lucro = atual - investido;
+                                        const lucroPct = investido > 0 ? (lucro / investido) * 100 : 0;
+                                        
+                                        s = { investido, atual, lucro, lucroPct };
+                                    } else {
+                                        const catMap = { acoes: 'ticker', realEstate: 'ticker', caixa: 'manual' };
+                                        s = getSectionStats(investments[activeTab], catMap[activeTab]);
+                                    }
+                                    
                                     return (
                                         <>
                                             <StatCard isMobile={isMobile} title="Total Investido" value={formatBRL(s.investido)} icon="PiggyBank" colorClass="bg-slate-900" />
@@ -356,7 +372,7 @@
                                                 <Pie data={[{ name: 'Ações', value: totals.acoes }, { name: 'RE', value: totals.re }, { name: 'Caixa', value: totals.caixa }, { name: 'Alt', value: totals.alt }].filter(d => d.value > 0)} innerRadius={80} outerRadius={140} paddingAngle={8} dataKey="value" stroke="none" cornerRadius={12}>
                                                     {COLORS.map((c, i) => <Cell key={i} fill={c} />)}
                                                 </Pie>
-                                                <Tooltip contentStyle={{ borderRadius: '1.5rem', border: 'none', boxShadow: '0 25px 50px rgba(0,0,0,0.1)', fontWeight: '900' }} formatter={(v) => formatBRL(v)} />
+                                                <Tooltip contentStyle={{ borderRadius: '1.5rem', border: 'none', boxShadow: '0 25px 50px rgba(0,0,0,0.1)', fontBold: '900' }} formatter={(v) => formatBRL(v)} />
                                                 <Legend iconType="circle" />
                                             </PieChart>
                                         </ResponsiveContainer>
@@ -390,8 +406,8 @@
                             </div>
                         )}
                         
-                        {activeTab === 'acoes' && renderTickerTable('acoes', 'Carteira Principal de Ações')}
-                        {activeTab === 'realEstate' && renderTickerTable('realEstate', 'Real Estate (FIIs)')}
+                        {activeTab === 'acoes' && renderSection('acoes', 'Carteira Principal de Ações', 'ticker')}
+                        {activeTab === 'realEstate' && renderSection('realEstate', 'Real Estate (FIIs)', 'ticker')}
                         {activeTab === 'caixa' && renderSection('caixa', 'Reserva e Liquidez', 'manual')}
                     </main>
                     <footer className="mt-20 py-10 text-center border-t border-slate-100 text-[10px] font-black text-slate-300 uppercase tracking-[0.5em]">IcaroInvest Management Systems &copy; 2026</footer>
