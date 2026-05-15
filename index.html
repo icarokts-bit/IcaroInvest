@@ -50,7 +50,7 @@
         <div class="flex items-center justify-center min-h-screen">
             <div class="text-center">
                 <div class="w-12 h-12 border-4 border-[#133054] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">Iniciando IcaroInvest Elite v8.7...</p>
+                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">Sincronizando IcaroInvest Elite v8.8...</p>
             </div>
         </div>
     </div>
@@ -203,7 +203,7 @@
                 }; 
                 setInvestments(u); 
                 save(u); 
-                setSyncStatus(`Recebimento de ${formatBRL(valor)} somado ao Saldo!`);
+                setSyncStatus(`Recebimento de ${formatBRL(valor)} creditado no Saldo em Conta!`);
                 setTimeout(() => setSyncStatus(""), 3000);
             };
 
@@ -371,7 +371,7 @@
                                             setTimeout(() => setSyncStatus(""), 3000);
                                         }
                                     }
-                                }} className="bg-[#133054] text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-black shadow-lg">+ Comprar</button>
+                                }} className="bg-[#133054] text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-black shadow-lg">+ Comprar Ativo</button>
                             </div>
                         </div>
                         <div className="overflow-x-auto custom-scroll">
@@ -385,7 +385,7 @@
                                         {type === 'ticker' && <th className="px-10 py-6 text-right">Var. Dia %</th>}
                                         <th className="px-10 py-6 text-right">Patrimônio</th>
                                         <th className="px-10 py-6 text-right">Lucro R$</th>
-                                        <th className="px-10 py-6 text-right">Operação</th>
+                                        <th className="px-10 py-6 text-right">Ação</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
@@ -445,7 +445,7 @@
                         <div className="flex items-center gap-4">
                             <img src="logo.png" alt="Logo" className="h-20 w-auto" />
                             <div className="flex flex-col">
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1">Management Elite v8.7</p>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1">Management Elite v8.8</p>
                             </div>
                         </div>
                         <nav className="flex bg-white p-2 rounded-[1.5rem] shadow-sm border border-slate-100 overflow-x-auto no-scrollbar max-w-full">
@@ -510,7 +510,7 @@
                                                 </div>
                                             ))}
                                             <div className="mt-6 pt-6 border-t border-slate-100">
-                                                 <div className="flex justify-between items-center bg-emerald-50 p-4 rounded-2xl border border-emerald-100">
+                                                 <div className="flex justify-between items-center bg-emerald-50 p-4 rounded-2xl border border-emerald-100 transition-all hover:bg-emerald-100 cursor-pointer" onClick={() => setActiveTab('caixa')}>
                                                      <span className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">Saldo Disponível</span>
                                                      <span className="font-black text-emerald-800 tabular">{formatBRL(totals.saldo)}</span>
                                                  </div>
@@ -570,7 +570,10 @@
                             </div>
                         ) : activeTab === 'dividendos' ? (
                             <div className="space-y-10">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6"><StatCard isMobile={isMobile} title="Total Recebido" value={formatBRL(totals.dividendos)} icon="Coins" colorClass="bg-emerald-600" /><StatCard isMobile={isMobile} title="Entradas" value={(investments.dividendos?.length || 0)} icon="Activity" colorClass="bg-[#133054]" /></div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <StatCard isMobile={isMobile} title="Total Recebido" value={formatBRL(totals.dividendos)} icon="Coins" colorClass="bg-emerald-600" />
+                                    <StatCard isMobile={isMobile} title="Entradas" value={(investments.dividendos?.length || 0)} icon="Activity" colorClass="bg-[#133054]" />
+                                </div>
                                 <div className="bg-white rounded-[2rem] overflow-hidden shadow-sm border border-slate-100">
                                     <div className="p-8 bg-slate-50/30 border-b flex justify-between items-center">
                                         <h2 className="font-black text-[#133054] uppercase tracking-tighter text-2xl">Proventos</h2>
@@ -619,14 +622,20 @@
                                             <h2 className="font-black text-emerald-800 uppercase tracking-tighter text-2xl">Saldo em Conta Corrente</h2>
                                             <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-widest mt-1">Recursos prontos para reinvestimento</p>
                                         </div>
-                                        <div className="text-right">
+                                        <div className="text-right flex flex-col items-end">
                                             <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Disponível</p>
                                             <h3 className="text-4xl font-black text-emerald-900 tabular">{formatBRL(totals.saldo)}</h3>
-                                            <div className="flex gap-4 justify-end mt-2">
+                                            <div className="flex gap-4 mt-4">
+                                                <button onClick={() => {
+                                                    const totalDiva = (investments.dividendos || []).reduce((acc, d) => acc + parseValue(d.valor), 0);
+                                                    if(confirm(`Deseja sincronizar o saldo com o total de proventos (R$ ${totalDiva.toFixed(2)})? Isso substituirá o saldo atual.`)) {
+                                                        const u = {...investments, saldoDisponivel: totalDiva}; setInvestments(u); save(u);
+                                                    }
+                                                }} className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-md">Sincronizar com Proventos</button>
                                                 <button onClick={() => {
                                                     const v = prompt("Ajustar saldo manualmente para:", investments.saldoDisponivel);
                                                     if(v !== null) { const u = {...investments, saldoDisponivel: parseValue(v)}; setInvestments(u); save(u); }
-                                                }} className="text-[9px] font-black text-emerald-600 uppercase underline">Ajustar Saldo</button>
+                                                }} className="text-[9px] font-black text-emerald-600 uppercase underline mt-2">Ajustar Saldo Manual</button>
                                             </div>
                                         </div>
                                     </div>
