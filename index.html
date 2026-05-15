@@ -50,7 +50,7 @@
         <div class="flex items-center justify-center min-h-screen">
             <div class="text-center">
                 <div class="w-12 h-12 border-4 border-[#133054] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">Sincronizando IcaroInvest Elite v9.2...</p>
+                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">Sincronizando IcaroInvest Elite v9.3...</p>
             </div>
         </div>
     </div>
@@ -161,7 +161,10 @@
                 onAuthStateChanged(auth, (user) => {
                     if (user) {
                         onSnapshot(doc(db, 'investments', 'portfolio_principal'), (snap) => {
-                            if (snap.exists()) setInvestments(prevState => ({...prevState, ...snap.data()}));
+                            if (snap.exists()) {
+                                const cloudData = snap.data();
+                                setInvestments(prevState => ({...prevState, ...cloudData}));
+                            }
                         });
                     }
                 });
@@ -177,7 +180,7 @@
                 return {
                     id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
                     data: data || new Date().toLocaleDateString('pt-BR'),
-                    ativo,
+                    ativo: ativo.toUpperCase(),
                     tipo,
                     quantidade: parseValue(qtd),
                     valorUnitario: parseValue(valorUnit),
@@ -190,6 +193,8 @@
                 const valor = parseValue(valorStr);
                 if (isNaN(valor) || valor <= 0) return;
 
+                const mov = registrarMovimentacao(null, ativo, "Crédito (Provento)", 1, valor);
+
                 const u = {
                     ...investments, 
                     dividendos: [...(investments.dividendos||[]), {
@@ -199,16 +204,17 @@
                         tipo: "Dividendo", 
                         valor: valor
                     }],
+                    movimentacoes: [mov, ...(investments.movimentacoes || [])],
                     saldoDisponivel: (parseValue(investments.saldoDisponivel) || 0) + valor
                 }; 
                 setInvestments(u); 
                 save(u); 
-                setSyncStatus(`Recebimento de ${formatBRL(valor)} creditado no Saldo em Conta!`);
+                setSyncStatus(`Provento de ${formatBRL(valor)} registado em Movimentações!`);
                 setTimeout(() => setSyncStatus(""), 3000);
             };
 
-            const venderAtivo = (cat, id) => {
-                const item = investments[cat].find(i => i.id === id);
+            const venderAtivo = (cat, idAtivo) => {
+                const item = investments[cat].find(i => i.id === idAtivo);
                 if (!item) return;
 
                 const dataVenda = prompt("Data da venda (DD/MM/AAAA):", new Date().toLocaleDateString('pt-BR'));
@@ -232,12 +238,12 @@
                 let updatedList;
                 if (cat === 'caixa') {
                     const restante = item.valorAtual - qtdVenda;
-                    if (restante <= 0) updatedList = investments[cat].filter(i => i.id !== id);
-                    else updatedList = investments[cat].map(i => i.id === id ? {...i, valorAtual: restante} : i);
+                    if (restante <= 0) updatedList = investments[cat].filter(i => i.id !== idAtivo);
+                    else updatedList = investments[cat].map(i => i.id === idAtivo ? {...i, valorAtual: restante} : i);
                 } else {
                     const restante = item.quantidade - qtdVenda;
-                    if (restante <= 0) updatedList = investments[cat].filter(i => i.id !== id);
-                    else updatedList = investments[cat].map(i => i.id === id ? {...i, quantidade: restante} : i);
+                    if (restante <= 0) updatedList = investments[cat].filter(i => i.id !== idAtivo);
+                    else updatedList = investments[cat].map(i => i.id === idAtivo ? {...i, quantidade: restante} : i);
                 }
 
                 const novaMov = registrarMovimentacao(dataVenda, cat === 'caixa' ? item.nome : item.ticker, 'Venda', qtdVenda, vUnit);
@@ -351,7 +357,7 @@
                                                 saldoDisponivel: (parseValue(investments.saldoDisponivel) || 0) - totalOperacao
                                             }; 
                                             setInvestments(u); save(u); 
-                                            setSyncStatus(`Compra de ${formatBRL(totalOperacao)} subtraída do Saldo!`);
+                                            setSyncStatus(`Compra registada e saldo atualizado!`);
                                             setTimeout(() => setSyncStatus(""), 3000);
                                         }
                                     } else {
@@ -367,7 +373,7 @@
                                                 saldoDisponivel: (parseValue(investments.saldoDisponivel) || 0) - totalOperacao
                                             }; 
                                             setInvestments(u); save(u); 
-                                            setSyncStatus(`Aplicação de ${formatBRL(totalOperacao)} subtraída do Saldo!`);
+                                            setSyncStatus(`Aplicação registada em Movimentações!`);
                                             setTimeout(() => setSyncStatus(""), 3000);
                                         }
                                     }
@@ -409,7 +415,7 @@
                                                             <button onClick={() => lancarProvento(item.ticker)} className="bg-emerald-50 text-emerald-600 px-3 py-1 rounded-lg font-black text-[9px] uppercase tracking-widest border border-emerald-100 hover:bg-emerald-600 hover:text-white transition-all flex items-center gap-1"><LucideIcon name="Coins" size={12}/> Provento</button>
                                                         )}
                                                         <button onClick={() => venderAtivo(cat, item.id)} className="bg-rose-50 text-rose-600 px-3 py-1 rounded-lg font-black text-[9px] uppercase tracking-widest border border-rose-100 hover:bg-rose-600 hover:text-white transition-all">Vender</button>
-                                                        <button onClick={() => { if(confirm("Remover permanentemente?")) { const u = {...investments, [cat]: investments[cat].filter(i => i.id !== item.id)}; setInvestments(u); save(u); } }} className="text-slate-300 hover:text-rose-500"><LucideIcon name="Trash2" size={16}/></button>
+                                                        <button onClick={() => { if(confirm("Remover permanentemente da carteira?")) { const u = {...investments, [cat]: investments[cat].filter(i => i.id !== item.id)}; setInvestments(u); save(u); } }} className="text-slate-300 hover:text-rose-500"><LucideIcon name="Trash2" size={16}/></button>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -445,7 +451,7 @@
                         <div className="flex items-center gap-4">
                             <img src="logo.png" alt="Logo" className="h-20 w-auto" />
                             <div className="flex flex-col">
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1">Management Elite v9.2</p>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1">Management Elite v9.3</p>
                             </div>
                         </div>
                         <nav className="flex bg-white p-2 rounded-[1.5rem] shadow-sm border border-slate-100 overflow-x-auto no-scrollbar max-w-full">
@@ -522,7 +528,7 @@
                             </div>
                         ) : activeTab === 'movimentacoes' ? (
                             <div className="space-y-10 animate-in">
-                                <h2 className="text-2xl font-black uppercase text-[#133054]">Movimentações</h2>
+                                <h2 className="text-2xl font-black uppercase text-[#133054]">Movimentações Recentes</h2>
                                 <div className="bg-white rounded-[2rem] overflow-hidden shadow-sm border border-slate-100">
                                     <div className="overflow-x-auto custom-scroll">
                                         <table className="w-full text-left">
@@ -536,13 +542,13 @@
                                                         <td className="px-10 py-6 font-black uppercase text-[#133054]">{m.ativo}</td>
                                                         <td className="px-10 py-6">
                                                             <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${
-                                                                m.tipo.includes('Compra') || m.tipo.includes('Entrada') ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
+                                                                m.tipo.includes('Compra') || m.tipo.includes('Entrada') || m.tipo.includes('Crédito') ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
                                                             }`}>{m.tipo}</span>
                                                         </td>
                                                         <td className="px-10 py-6 text-center font-bold">{m.quantidade < 1 ? m.quantidade.toFixed(8).replace(/\.?0+$/, "") : m.quantidade.toLocaleString()}</td>
                                                         <td className="px-10 py-6 text-right font-bold text-slate-400">{formatBRL(m.valorUnitario)}</td>
                                                         <td className="px-10 py-6 text-right font-black text-[#133054]">{formatBRL(m.valorTotal)}</td>
-                                                        <td className="px-10 py-6 text-right"><button onClick={() => { if(confirm("Apagar registo?")) { const u = {...investments, movimentacoes: investments.movimentacoes.filter(x => x.id !== m.id)}; setInvestments(u); save(u); } }} className="text-slate-200 hover:text-rose-500"><LucideIcon name="Trash2" size={16}/></button></td>
+                                                        <td className="px-10 py-6 text-right"><button onClick={() => { if(confirm("Apagar registo desta movimentação? (Não altera o saldo atual)")) { const u = {...investments, movimentacoes: investments.movimentacoes.filter(x => x.id !== m.id)}; setInvestments(u); save(u); } }} className="text-slate-200 hover:text-rose-500"><LucideIcon name="Trash2" size={16}/></button></td>
                                                     </tr>
                                                 ))}
                                                 {(investments.movimentacoes || []).length === 0 && <tr><td colSpan="7" className="px-10 py-20 text-center text-slate-300 font-bold uppercase text-[10px] tracking-[0.4em]">Nenhuma movimentação registada</td></tr>}
@@ -585,22 +591,14 @@
                                         <button onClick={() => { 
                                             const a = prompt("Ativo:"); const v = prompt("Valor:"); 
                                             if(a && v) { 
-                                                const valNum = parseValue(v);
-                                                const u = {
-                                                    ...investments, 
-                                                    dividendos: [...(investments.dividendos||[]), {id: Date.now().toString(), data: new Date().toLocaleDateString('pt-BR'), ativo: a.toUpperCase(), tipo: "Dividendo", valor: valNum}],
-                                                    saldoDisponivel: (parseValue(investments.saldoDisponivel) || 0) + valNum
-                                                }; 
-                                                setInvestments(u); save(u); 
-                                                setSyncStatus(`Recebimento de ${formatBRL(valNum)} creditado no Saldo!`);
-                                                setTimeout(() => setSyncStatus(""), 3000);
+                                                lancarProvento(a);
                                             } 
                                         }} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest">+ Lançar Recebimento</button>
                                     </div>
                                     <table className="w-full text-left">
                                         <thead className="bg-slate-50 text-[10px] uppercase tracking-widest text-slate-400 font-black"><tr><th className="px-10 py-6">Data</th><th className="px-10 py-6">Ativo</th><th className="px-10 py-6 text-right">Valor</th><th className="px-10 py-6"></th></tr></thead>
                                         <tbody className="divide-y divide-slate-100 tabular text-sm">
-                                            {(investments.dividendos || []).map(item => ( <tr key={item.id}><td className="px-10 py-6 text-slate-500 font-bold">{item.data}</td><td className="px-10 py-6 font-black text-slate-900 uppercase">{item.ativo}</td><td className="px-10 py-6 text-right font-black text-emerald-600">{formatBRL(item.valor)}</td><td className="px-10 py-6 text-right"><button onClick={() => { if(confirm("Remover?")) { const u = {...investments, dividendos: investments.dividendos.filter(i => i.id !== item.id)}; setInvestments(u); save(u); } }} className="text-slate-200 hover:text-rose-500"><LucideIcon name="Trash2" size={18}/></button></td></tr> ))}
+                                            {(investments.dividendos || []).map(item => ( <tr key={item.id}><td className="px-10 py-6 text-slate-500 font-bold">{item.data}</td><td className="px-10 py-6 font-black text-slate-900 uppercase">{item.ativo}</td><td className="px-10 py-6 text-right font-black text-emerald-600">{formatBRL(item.valor)}</td><td className="px-10 py-6 text-right"><button onClick={() => { if(confirm("Remover provento? (O saldo não será alterado automaticamente)")) { const u = {...investments, dividendos: investments.dividendos.filter(i => i.id !== item.id)}; setInvestments(u); save(u); } }} className="text-slate-200 hover:text-rose-500"><LucideIcon name="Trash2" size={18}/></button></td></tr> ))}
                                         </tbody>
                                     </table>
                                 </div>
@@ -630,7 +628,6 @@
                                     }
                                     return (
                                         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                                            {/* Cabeçalho focado apenas nos dados da aba correspondente */}
                                             <StatCard isMobile={isMobile} title="Total Investido" value={formatBRL(s.investido)} icon="PiggyBank" colorClass="bg-slate-900" />
                                             <StatCard isMobile={isMobile} title="Património Atual" value={formatBRL(s.atual)} icon="Wallet" colorClass="bg-[#133054]" />
                                             <StatCard isMobile={isMobile} title="Lucro Bruto" value={formatBRL(s.lucro)} subValue={`${s.lucroPct.toFixed(2)}%`} icon="TrendingUp" colorClass={s.lucro >= 0 ? "bg-emerald-500" : "bg-rose-500"} />
@@ -656,11 +653,12 @@
                                                     if(confirm(`Deseja sincronizar o saldo com o total de proventos (R$ ${totalDiva.toFixed(2)})? Isso substituirá o saldo atual.`)) {
                                                         const diff = totalDiva - currentSaldo;
                                                         if (Math.abs(diff) > 0.01) {
-                                                            const mov = registrarMovimentacao(null, "SALDO EM CONTA", diff > 0 ? "Ajuste (Sinc. Proventos)" : "Ajuste (Débito)", 1, Math.abs(diff));
-                                                            const u = {...investments, saldoDisponivel: totalDiva, movimentacoes: [mov, ...(investments.movimentacoes || [])]}; 
-                                                            setInvestments(u); save(u);
-                                                        } else {
-                                                            const u = {...investments, saldoDisponivel: totalDiva};
+                                                            const mov = registrarMovimentacao(null, "AJUSTE DE SALDO", diff > 0 ? "Crédito (Sinc. Proventos)" : "Débito (Sinc. Saldo)", 1, Math.abs(diff));
+                                                            const u = {
+                                                                ...investments, 
+                                                                saldoDisponivel: totalDiva, 
+                                                                movimentacoes: [mov, ...(investments.movimentacoes || [])]
+                                                            }; 
                                                             setInvestments(u); save(u);
                                                         }
                                                     }
@@ -689,7 +687,7 @@
                                                         }; 
                                                         setInvestments(u); 
                                                         save(u); 
-                                                        setSyncStatus(`Saldo ajustado e registado em Movimentações!`);
+                                                        setSyncStatus(`Ajuste registado com sucesso!`);
                                                         setTimeout(() => setSyncStatus(""), 3000);
                                                     }
                                                 }} className="text-[9px] font-black text-emerald-600 uppercase underline mt-2">Ajustar Saldo Manual</button>
