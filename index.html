@@ -51,7 +51,7 @@
         <div class="flex items-center justify-center min-h-screen">
             <div class="text-center">
                 <div class="w-12 h-12 border-4 border-[#133054] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">Sincronizando IcaroInvest Elite v9.8...</p>
+                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">Sincronizando IcaroInvest Elite v9.9...</p>
             </div>
         </div>
     </div>
@@ -178,13 +178,14 @@
             const fetchMarketMovers = async () => {
                 try {
                     setSyncStatus("Atualizando dados de mercado...");
+                    // Filtramos para pegar as principais ações (Ibovespa aproximado)
                     const res = await fetch(`https://brapi.dev/api/quote/list?sortBy=change&sortOrder=desc&limit=10&token=${BRAPI_TOKEN}`);
                     const data = await res.json();
-                    if (data.stocks) setMarketTopGainers(data.stocks);
+                    if (data.stocks) setMarketTopGainers(data.stocks.filter(s => s.volume > 1000000)); // Filtro de liquidez
 
                     const resL = await fetch(`https://brapi.dev/api/quote/list?sortBy=change&sortOrder=asc&limit=10&token=${BRAPI_TOKEN}`);
                     const dataL = await resL.json();
-                    if (dataL.stocks) setMarketTopLosers(dataL.stocks);
+                    if (dataL.stocks) setMarketTopLosers(dataL.stocks.filter(s => s.volume > 1000000));
                     
                     setSyncStatus("");
                 } catch (e) { console.error(e); setSyncStatus("Falha ao carregar mercado."); }
@@ -307,6 +308,10 @@
                 });
             }, [investments.acoes, marketSort]);
 
+            const handleMarketSort = (key) => {
+                setMarketSort(prev => ({ key, dir: prev.key === key && prev.dir === 'desc' ? 'asc' : 'desc' }));
+            };
+
             const renderTableSection = (cat, title, type = 'ticker') => {
                 const data = investments[cat] || [];
                 return (
@@ -393,24 +398,20 @@
                 setSyncStatus("Fim!"); setTimeout(()=>setSyncStatus(""), 2000);
             };
 
-            const handleMarketSort = (key) => {
-                setMarketSort(prev => ({ key, dir: prev.key === key && prev.dir === 'desc' ? 'asc' : 'desc' }));
-            };
-
             return (
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-32">
                     <header className="py-10 flex flex-col md:flex-row justify-between items-center gap-8">
                         <div className="flex items-center gap-4 cursor-pointer" onClick={() => setActiveTab('dashboard')}>
                             <img src="logo.png" alt="Logo" className="h-20 w-auto" />
                             <div className="flex flex-col">
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1">Management Elite v9.8</p>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1">Management Elite v9.9</p>
                             </div>
                         </div>
                         <nav className="flex bg-white p-2 rounded-[1.5rem] shadow-sm border border-slate-100 overflow-x-auto no-scrollbar max-w-full">
                             {[
                                 { id: 'dashboard', icon: 'LayoutDashboard', label: 'Resumo' },
                                 { id: 'mercado', icon: 'Globe', label: 'Resumo Mercado' },
-                                { id: 'acoes', icon: 'TrendingUp', label: 'Ações' },
+                                { id: 'acoes', icon: 'TrendingUp', label: 'Ações / ETF' },
                                 { id: 'realEstate', icon: 'Home', label: 'RE' },
                                 { id: 'caixa', icon: 'Landmark', label: 'Caixa' },
                                 { id: 'alternativos', icon: 'Layers', label: 'Alt' },
@@ -477,27 +478,28 @@
 
                         {activeTab === 'mercado' && (
                             <div className="space-y-10 animate-in">
+                                {/* 1. Portfolio Consolidado com Ordenação */}
                                 <div className="bg-white rounded-[2rem] overflow-hidden shadow-sm border border-slate-100">
                                     <div className="p-8 bg-slate-50/30 border-b flex justify-between items-center">
                                         <h2 className="font-black text-[#133054] uppercase tracking-tighter text-2xl">Minha Carteira (Ações & ETFs)</h2>
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Clique nos cabeçalhos para ordenar</p>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Clique nos cabeçalhos para ordenar (Maior para Menor)</p>
                                     </div>
                                     <div className="overflow-x-auto custom-scroll">
                                         <table className="w-full text-left">
                                             <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest cursor-pointer select-none">
                                                 <tr>
                                                     <th className="px-10 py-6" onClick={() => handleMarketSort('ativo')}>Ativos <LucideIcon name="ChevronDown" size={10} className="inline"/></th>
-                                                    <th className="px-10 py-6 text-center" onClick={() => handleMarketSort('qtd')}>QTD</th>
-                                                    <th className="px-10 py-6 text-right" onClick={() => handleMarketSort('custo')}>CUSTO</th>
-                                                    <th className="px-10 py-6 text-right" onClick={() => handleMarketSort('atual')}>ATUAL</th>
-                                                    <th className="px-10 py-6 text-right" onClick={() => handleMarketSort('varDia')}>VAR DIA %</th>
-                                                    <th className="px-10 py-6 text-right" onClick={() => handleMarketSort('patrimonio')}>PATRIMONIO</th>
-                                                    <th className="px-10 py-6 text-right" onClick={() => handleMarketSort('lucro')}>LUCRO R$</th>
+                                                    <th className="px-10 py-6 text-center" onClick={() => handleMarketSort('qtd')}>QTY <LucideIcon name="ChevronDown" size={10} className="inline"/></th>
+                                                    <th className="px-10 py-6 text-right" onClick={() => handleMarketSort('custo')}>CUSTO <LucideIcon name="ChevronDown" size={10} className="inline"/></th>
+                                                    <th className="px-10 py-6 text-right" onClick={() => handleMarketSort('atual')}>ATUAL <LucideIcon name="ChevronDown" size={10} className="inline"/></th>
+                                                    <th className="px-10 py-6 text-right" onClick={() => handleMarketSort('varDia')}>VAR DIA % <LucideIcon name="ChevronDown" size={10} className="inline"/></th>
+                                                    <th className="px-10 py-6 text-right" onClick={() => handleMarketSort('patrimonio')}>PATRIMONIO <LucideIcon name="ChevronDown" size={10} className="inline"/></th>
+                                                    <th className="px-10 py-6 text-right" onClick={() => handleMarketSort('lucro')}>LUCRO R$ <LucideIcon name="ChevronDown" size={10} className="inline"/></th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100 tabular text-sm">
                                                 {marketPortfolioList.map(item => (
-                                                    <tr key={item.ativo} className="hover:bg-slate-50/50">
+                                                    <tr key={item.ativo} className="hover:bg-slate-50/50 transition-colors">
                                                         <td className="px-10 py-6 font-black text-[#133054] uppercase">{item.ativo}</td>
                                                         <td className="px-10 py-6 text-center font-bold">{item.qtd.toLocaleString()}</td>
                                                         <td className="px-10 py-6 text-right font-bold text-slate-400">{formatBRL(item.custo)}</td>
@@ -507,11 +509,15 @@
                                                         <td className={`px-10 py-6 text-right font-black ${item.lucro >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>{formatBRL(item.lucro)}</td>
                                                     </tr>
                                                 ))}
+                                                {marketPortfolioList.length === 0 && (
+                                                    <tr><td colSpan="7" className="px-10 py-20 text-center text-slate-300 font-bold uppercase text-[10px] tracking-[0.4em]">Adicione ações na aba correspondente</td></tr>
+                                                )}
                                             </tbody>
                                         </table>
                                     </div>
                                 </div>
 
+                                {/* 2 e 3. Top Altas e Baixas */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
                                     <div className="bg-white rounded-[2rem] overflow-hidden shadow-sm border border-slate-100">
                                         <div className="p-8 bg-emerald-50/50 border-b flex items-center gap-3">
@@ -519,12 +525,13 @@
                                             <h2 className="font-black text-emerald-800 uppercase tracking-tighter text-xl">Top 10 Maiores Altas (Hoje)</h2>
                                         </div>
                                         <div className="p-4 space-y-2">
-                                            {marketTopGainers.map((s, idx) => (
-                                                <div key={s.stock} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl">
+                                            {marketTopGainers.slice(0, 10).map((s, idx) => (
+                                                <div key={s.stock} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl hover:bg-emerald-50 transition-colors">
                                                     <div className="flex items-center gap-4"><span className="text-[10px] font-black text-slate-300 w-4">{idx+1}</span><span className="font-black text-[#133054] uppercase">{s.stock}</span></div>
                                                     <div className="text-right"><p className="font-black text-slate-900 text-sm">{formatBRL(s.close)}</p><p className="text-[10px] font-black text-emerald-600">+{s.change.toFixed(2)}%</p></div>
                                                 </div>
                                             ))}
+                                            {marketTopGainers.length === 0 && <p className="p-10 text-center text-slate-300 font-bold uppercase text-[10px]">Carregando...</p>}
                                         </div>
                                     </div>
                                     <div className="bg-white rounded-[2rem] overflow-hidden shadow-sm border border-slate-100">
@@ -533,12 +540,13 @@
                                             <h2 className="font-black text-rose-800 uppercase tracking-tighter text-xl">Top 10 Maiores Baixas (Hoje)</h2>
                                         </div>
                                         <div className="p-4 space-y-2">
-                                            {marketTopLosers.map((s, idx) => (
-                                                <div key={s.stock} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl">
+                                            {marketTopLosers.slice(0, 10).map((s, idx) => (
+                                                <div key={s.stock} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl hover:bg-rose-50 transition-colors">
                                                     <div className="flex items-center gap-4"><span className="text-[10px] font-black text-slate-300 w-4">{idx+1}</span><span className="font-black text-[#133054] uppercase">{s.stock}</span></div>
                                                     <div className="text-right"><p className="font-black text-slate-900 text-sm">{formatBRL(s.close)}</p><p className="text-[10px] font-black text-rose-600">{s.change.toFixed(2)}%</p></div>
                                                 </div>
                                             ))}
+                                            {marketTopLosers.length === 0 && <p className="p-10 text-center text-slate-300 font-bold uppercase text-[10px]">Carregando...</p>}
                                         </div>
                                     </div>
                                 </div>
@@ -648,7 +656,7 @@
                                         <div className="text-right flex flex-col items-end"><p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Disponível</p><h3 className="text-4xl font-black text-emerald-900 tabular">{formatBRL(totals.saldo)}</h3><button onClick={() => { const currentSaldo = parseValue(investments.saldoDisponivel); const v = prompt("Ajustar saldo manualmente para:", currentSaldo); if(v !== null) { const newSaldo = parseValue(v); const diff = newSaldo - currentSaldo; if (Math.abs(diff) < 0.01) return; setInvestments(prev => { const mov = registrarMovimentacao(null, "SALDO EM CONTA", diff > 0 ? "Ajuste (Entrada)" : "Ajuste (Saída)", 1, Math.abs(diff)); const next = { ...prev, saldoDisponivel: newSaldo, movimentacoes: [mov, ...(prev.movimentacoes || [])] }; save(next); return next; }); setSyncStatus(`Ajuste registado!`); setTimeout(() => setSyncStatus(""), 3000); } }} className="text-[9px] font-black text-emerald-600 uppercase underline mt-2">Ajustar Saldo Manual</button></div>
                                     </div>
                                 )}
-                                {activeTab === 'acoes' && renderTableSection('acoes', 'Ações', 'ticker')}
+                                {activeTab === 'acoes' && renderTableSection('acoes', 'Consolidado Ações / ETF', 'ticker')}
                                 {activeTab === 'realEstate' && renderTableSection('realEstate', 'RE (FIIs)', 'ticker')}
                                 {activeTab === 'caixa' && ( <> {renderTableSection('caixa', 'Aplicações e Reserva (Manual)', 'manual')} {renderTableSection('caixaTicker', 'RF Cotada (Tickers)', 'ticker')} </> )}
                                 {activeTab === 'alternativos' && ( <> {renderTableSection('altFunds', 'Fundos', 'manual')} {renderTableSection('altStocks', 'Ações Alt', 'ticker')} {renderTableSection('altCrypto', 'Cripto', 'ticker')} </> )}
