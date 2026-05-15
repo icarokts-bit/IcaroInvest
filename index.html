@@ -51,7 +51,7 @@
         <div class="flex items-center justify-center min-h-screen">
             <div class="text-center">
                 <div class="w-12 h-12 border-4 border-[#133054] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">Sincronizando IcaroInvest Elite v9.9...</p>
+                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">Sincronizando IcaroInvest Elite v10.3...</p>
             </div>
         </div>
     </div>
@@ -91,6 +91,9 @@
 
         const BRAPI_TOKEN = "pZapqBJxy1rE4pq3g4vy69";
         const COLORS = ['#133054', '#bfa260', '#10b981', '#64748b', '#f43f5e', '#f59e0b'];
+        
+        // Ativos para serem ignorados em todo o sistema (Filtro Personalizado)
+        const EXCLUDED_TICKERS = ['CHAINLINK', 'PENDLE', 'ETH', 'BTC'];
 
         const parseValue = (val) => {
             if (val === null || val === undefined || val === '') return 0;
@@ -178,14 +181,19 @@
             const fetchMarketMovers = async () => {
                 try {
                     setSyncStatus("Atualizando dados de mercado...");
-                    // Filtramos para pegar as principais ações (Ibovespa aproximado)
-                    const res = await fetch(`https://brapi.dev/api/quote/list?sortBy=change&sortOrder=desc&limit=10&token=${BRAPI_TOKEN}`);
-                    const data = await res.json();
-                    if (data.stocks) setMarketTopGainers(data.stocks.filter(s => s.volume > 1000000)); // Filtro de liquidez
+                    
+                    const filterMainStocks = (stocks) => stocks.filter(s => 
+                        s.volume > 1000000 && 
+                        !EXCLUDED_TICKERS.some(ex => s.stock.toUpperCase().includes(ex))
+                    );
 
-                    const resL = await fetch(`https://brapi.dev/api/quote/list?sortBy=change&sortOrder=asc&limit=10&token=${BRAPI_TOKEN}`);
+                    const res = await fetch(`https://brapi.dev/api/quote/list?sortBy=change&sortOrder=desc&limit=25&token=${BRAPI_TOKEN}`);
+                    const data = await res.json();
+                    if (data.stocks) setMarketTopGainers(filterMainStocks(data.stocks).slice(0, 10));
+
+                    const resL = await fetch(`https://brapi.dev/api/quote/list?sortBy=change&sortOrder=asc&limit=25&token=${BRAPI_TOKEN}`);
                     const dataL = await resL.json();
-                    if (dataL.stocks) setMarketTopLosers(dataL.stocks.filter(s => s.volume > 1000000));
+                    if (dataL.stocks) setMarketTopLosers(filterMainStocks(dataL.stocks).slice(0, 10));
                     
                     setSyncStatus("");
                 } catch (e) { console.error(e); setSyncStatus("Falha ao carregar mercado."); }
@@ -244,10 +252,16 @@
 
             const getSectionStats = (list, type = 'ticker') => {
                 let investido = 0; let atual = 0; let variacaoDiaR$ = 0;
+                
+                // Filtramos os excluídos do cálculo de estatísticas
+                const filteredList = (list || []).filter(item => 
+                    !EXCLUDED_TICKERS.includes((item.ticker || "").toUpperCase())
+                );
+
                 if (type === 'ticker') {
-                    investido = (list || []).reduce((acc, i) => acc + (parseValue(i.quantidade) * parseValue(i.precoMedio)), 0);
-                    atual = (list || []).reduce((acc, i) => acc + (parseValue(i.quantidade) * parseValue(i.precoAtual)), 0);
-                    (list || []).forEach(i => {
+                    investido = filteredList.reduce((acc, i) => acc + (parseValue(i.quantidade) * parseValue(i.precoMedio)), 0);
+                    atual = filteredList.reduce((acc, i) => acc + (parseValue(i.quantidade) * parseValue(i.precoAtual)), 0);
+                    filteredList.forEach(i => {
                         const qty = parseValue(i.quantidade); const cur = parseValue(i.precoAtual); const varPct = parseValue(i.variacaoDia);
                         if (varPct !== 0) {
                             const prevPrice = cur / (1 + (varPct / 100));
@@ -255,8 +269,8 @@
                         }
                     });
                 } else {
-                    investido = (list || []).reduce((acc, i) => acc + parseValue(i.valorAplicado), 0);
-                    atual = (list || []).reduce((acc, i) => acc + parseValue(i.valorAtual), 0);
+                    investido = filteredList.reduce((acc, i) => acc + parseValue(i.valorAplicado), 0);
+                    atual = filteredList.reduce((acc, i) => acc + parseValue(i.valorAtual), 0);
                 }
                 const lucro = atual - investido;
                 const lucroPct = investido > 0 ? (lucro / investido) * 100 : 0;
@@ -272,8 +286,15 @@
                 const sAltF = getSectionStats(investments.altFunds, 'manual');
                 const sAltS = getSectionStats(investments.altStocks, 'ticker');
                 const sAltC = getSectionStats(investments.altCrypto, 'ticker');
-                const divsPagos = (investments.dividendos || []).filter(d => d.status === 'pago' || !d.status).reduce((acc, b) => acc + parseValue(b.valor || 0), 0);
-                const divsPendentes = (investments.dividendos || []).filter(d => d.status === 'pendente').reduce((acc, b) => acc + parseValue(b.valor || 0), 0);
+                
+                const divsPagos = (investments.dividendos || []).filter(d => 
+                    (d.status === 'pago' || !d.status) && !EXCLUDED_TICKERS.includes(d.ativo.toUpperCase())
+                ).reduce((acc, b) => acc + parseValue(b.valor || 0), 0);
+                
+                const divsPendentes = (investments.dividendos || []).filter(d => 
+                    d.status === 'pendente' && !EXCLUDED_TICKERS.includes(d.ativo.toUpperCase())
+                ).reduce((acc, b) => acc + parseValue(b.valor || 0), 0);
+                
                 const saldo = parseValue(investments.saldoDisponivel);
                 const acoes = sAcoes; const re = sRE;
                 const caixa = { investido: sCaixaM.investido + sCaixaT.investido, atual: sCaixaM.atual + sCaixaT.atual + saldo, lucro: sCaixaM.lucro + sCaixaT.lucro, variacaoDiaR$: sCaixaT.variacaoDiaR$ };
@@ -289,7 +310,16 @@
             }, [investments]);
 
             const marketPortfolioList = useMemo(() => {
-                const list = [...(investments.acoes || [])].map(item => {
+                // Consolida todos os ativos cotados de todas as abas, excluindo os indesejados (Filtro Global)
+                const combined = [
+                    ...(investments.acoes || []),
+                    ...(investments.realEstate || []),
+                    ...(investments.caixaTicker || []),
+                    ...(investments.altStocks || []),
+                    ...(investments.altCrypto || [])
+                ].filter(item => !EXCLUDED_TICKERS.includes((item.ticker || "").toUpperCase()));
+
+                const list = combined.map(item => {
                     const pat = parseValue(item.quantidade) * parseValue(item.precoAtual);
                     const custo = parseValue(item.quantidade) * parseValue(item.precoMedio);
                     return { 
@@ -306,14 +336,14 @@
                     const valA = a[marketSort.key]; const valB = b[marketSort.key];
                     return marketSort.dir === 'desc' ? valB - valA : valA - valB;
                 });
-            }, [investments.acoes, marketSort]);
+            }, [investments, marketSort]);
 
             const handleMarketSort = (key) => {
                 setMarketSort(prev => ({ key, dir: prev.key === key && prev.dir === 'desc' ? 'asc' : 'desc' }));
             };
 
             const renderTableSection = (cat, title, type = 'ticker') => {
-                const data = investments[cat] || [];
+                const data = (investments[cat] || []);
                 return (
                     <div className="bg-white rounded-[2rem] overflow-hidden shadow-sm border border-slate-100 animate-in mb-10">
                         <div className="p-8 bg-slate-50/30 border-b flex justify-between items-center">
@@ -324,10 +354,15 @@
                                     if(type === 'ticker') {
                                         const t = prompt("Ticker:"); const q = prompt("Qtd:"); const p = prompt("P. Médio:");
                                         if(t && q) { 
+                                            const tickerUpper = t.toUpperCase();
+                                            if (EXCLUDED_TICKERS.includes(tickerUpper)) {
+                                                alert("Este ativo foi removido por política do sistema.");
+                                                return;
+                                            }
                                             const totalOperacao = parseValue(q) * parseValue(p);
                                             setInvestments(prev => {
-                                                const item = {id: Date.now().toString(), ticker: t.toUpperCase(), quantidade: parseValue(q), precoMedio: parseValue(p), precoAtual: parseValue(p)};
-                                                const mov = registrarMovimentacao(null, t.toUpperCase(), 'Compra', q, p);
+                                                const item = {id: Date.now().toString(), ticker: tickerUpper, quantidade: parseValue(q), precoMedio: parseValue(p), precoAtual: parseValue(p)};
+                                                const mov = registrarMovimentacao(null, tickerUpper, 'Compra', q, p);
                                                 const next = { ...prev, [cat]: [...(prev[cat]||[]), item], movimentacoes: [mov, ...(prev.movimentacoes || [])], saldoDisponivel: (parseValue(prev.saldoDisponivel) || 0) - totalOperacao };
                                                 save(next); return next;
                                             });
@@ -398,13 +433,47 @@
                 setSyncStatus("Fim!"); setTimeout(()=>setSyncStatus(""), 2000);
             };
 
+            // Sincronização Global para todos os ativos cotados
+            const syncGlobalPortfolio = async () => {
+                const categories = ['acoes', 'realEstate', 'caixaTicker', 'altStocks', 'altCrypto'];
+                setSyncStatus("Sincronização Global Iniciada...");
+                
+                let updatedInvestments = { ...investments };
+                
+                for (const cat of categories) {
+                    const list = [...(updatedInvestments[cat] || [])];
+                    if (list.length === 0) continue;
+                    
+                    for (let i = 0; i < list.length; i++) {
+                        const t = list[i].ticker;
+                        setSyncStatus(`Sincronizando ${t}...`);
+                        try {
+                            const url = `https://brapi.dev/api/quote/${t}?token=${BRAPI_TOKEN}`;
+                            const res = await fetch(url);
+                            const d = await res.json();
+                            if (d.results?.[0]) {
+                                list[i].precoAtual = d.results[0].regularMarketPrice;
+                                list[i].variacaoDia = d.results[0].regularMarketChangePercent;
+                            }
+                            await new Promise(r => setTimeout(r, 400)); // Rate limit protection
+                        } catch (e) { console.error(`Sync error for ${t}:`, e); }
+                    }
+                    updatedInvestments[cat] = list;
+                }
+                
+                setInvestments(updatedInvestments);
+                await save(updatedInvestments);
+                setSyncStatus("Carteira Total Sincronizada!");
+                setTimeout(() => setSyncStatus(""), 3000);
+            };
+
             return (
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-32">
                     <header className="py-10 flex flex-col md:flex-row justify-between items-center gap-8">
                         <div className="flex items-center gap-4 cursor-pointer" onClick={() => setActiveTab('dashboard')}>
                             <img src="logo.png" alt="Logo" className="h-20 w-auto" />
                             <div className="flex flex-col">
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1">Management Elite v9.9</p>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1">Management Elite v10.3</p>
                             </div>
                         </div>
                         <nav className="flex bg-white p-2 rounded-[1.5rem] shadow-sm border border-slate-100 overflow-x-auto no-scrollbar max-w-full">
@@ -480,9 +549,17 @@
                             <div className="space-y-10 animate-in">
                                 {/* 1. Portfolio Consolidado com Ordenação */}
                                 <div className="bg-white rounded-[2rem] overflow-hidden shadow-sm border border-slate-100">
-                                    <div className="p-8 bg-slate-50/30 border-b flex justify-between items-center">
-                                        <h2 className="font-black text-[#133054] uppercase tracking-tighter text-2xl">Minha Carteira (Ações & ETFs)</h2>
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Clique nos cabeçalhos para ordenar (Maior para Menor)</p>
+                                    <div className="p-8 bg-slate-50/30 border-b flex justify-between items-center flex-wrap gap-4">
+                                        <div>
+                                            <h2 className="font-black text-[#133054] uppercase tracking-tighter text-2xl">Minha Carteira Consolidada</h2>
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Ações, ETFs, FIIs e Ativos Cotados</p>
+                                        </div>
+                                        <div className="flex items-center gap-4">
+                                            <button onClick={syncGlobalPortfolio} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 shadow-lg flex items-center gap-2">
+                                                <LucideIcon name="RefreshCw" size={14} /> Sincronizar B3
+                                            </button>
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest hidden md:block">Clique nos cabeçalhos para ordenar</p>
+                                        </div>
                                     </div>
                                     <div className="overflow-x-auto custom-scroll">
                                         <table className="w-full text-left">
@@ -499,7 +576,7 @@
                                             </thead>
                                             <tbody className="divide-y divide-slate-100 tabular text-sm">
                                                 {marketPortfolioList.map(item => (
-                                                    <tr key={item.ativo} className="hover:bg-slate-50/50 transition-colors">
+                                                    <tr key={item.ativo + Math.random()} className="hover:bg-slate-50/50 transition-colors">
                                                         <td className="px-10 py-6 font-black text-[#133054] uppercase">{item.ativo}</td>
                                                         <td className="px-10 py-6 text-center font-bold">{item.qtd.toLocaleString()}</td>
                                                         <td className="px-10 py-6 text-right font-bold text-slate-400">{formatBRL(item.custo)}</td>
@@ -510,7 +587,7 @@
                                                     </tr>
                                                 ))}
                                                 {marketPortfolioList.length === 0 && (
-                                                    <tr><td colSpan="7" className="px-10 py-20 text-center text-slate-300 font-bold uppercase text-[10px] tracking-[0.4em]">Adicione ações na aba correspondente</td></tr>
+                                                    <tr><td colSpan="7" className="px-10 py-20 text-center text-slate-300 font-bold uppercase text-[10px] tracking-[0.4em]">Adicione ativos nas abas correspondentes</td></tr>
                                                 )}
                                             </tbody>
                                         </table>
@@ -525,7 +602,7 @@
                                             <h2 className="font-black text-emerald-800 uppercase tracking-tighter text-xl">Top 10 Maiores Altas (Hoje)</h2>
                                         </div>
                                         <div className="p-4 space-y-2">
-                                            {marketTopGainers.slice(0, 10).map((s, idx) => (
+                                            {marketTopGainers.map((s, idx) => (
                                                 <div key={s.stock} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl hover:bg-emerald-50 transition-colors">
                                                     <div className="flex items-center gap-4"><span className="text-[10px] font-black text-slate-300 w-4">{idx+1}</span><span className="font-black text-[#133054] uppercase">{s.stock}</span></div>
                                                     <div className="text-right"><p className="font-black text-slate-900 text-sm">{formatBRL(s.close)}</p><p className="text-[10px] font-black text-emerald-600">+{s.change.toFixed(2)}%</p></div>
@@ -540,7 +617,7 @@
                                             <h2 className="font-black text-rose-800 uppercase tracking-tighter text-xl">Top 10 Maiores Baixas (Hoje)</h2>
                                         </div>
                                         <div className="p-4 space-y-2">
-                                            {marketTopLosers.slice(0, 10).map((s, idx) => (
+                                            {marketTopLosers.map((s, idx) => (
                                                 <div key={s.stock} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl hover:bg-rose-50 transition-colors">
                                                     <div className="flex items-center gap-4"><span className="text-[10px] font-black text-slate-300 w-4">{idx+1}</span><span className="font-black text-[#133054] uppercase">{s.stock}</span></div>
                                                     <div className="text-right"><p className="font-black text-slate-900 text-sm">{formatBRL(s.close)}</p><p className="text-[10px] font-black text-rose-600">{s.change.toFixed(2)}%</p></div>
