@@ -50,7 +50,7 @@
         <div class="flex items-center justify-center min-h-screen">
             <div class="text-center">
                 <div class="w-12 h-12 border-4 border-[#133054] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">Sincronizando IcaroInvest Elite v9.3...</p>
+                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">Sincronizando IcaroInvest Elite v9.4...</p>
             </div>
         </div>
     </div>
@@ -162,8 +162,7 @@
                     if (user) {
                         onSnapshot(doc(db, 'investments', 'portfolio_principal'), (snap) => {
                             if (snap.exists()) {
-                                const cloudData = snap.data();
-                                setInvestments(prevState => ({...prevState, ...cloudData}));
+                                setInvestments(prevState => ({...prevState, ...snap.data()}));
                             }
                         });
                     }
@@ -193,23 +192,25 @@
                 const valor = parseValue(valorStr);
                 if (isNaN(valor) || valor <= 0) return;
 
-                const mov = registrarMovimentacao(null, ativo, "Crédito (Provento)", 1, valor);
-
-                const u = {
-                    ...investments, 
-                    dividendos: [...(investments.dividendos||[]), {
-                        id: Date.now().toString(), 
-                        data: new Date().toLocaleDateString('pt-BR'), 
-                        ativo: ativo.toUpperCase(), 
-                        tipo: "Dividendo", 
-                        valor: valor
-                    }],
-                    movimentacoes: [mov, ...(investments.movimentacoes || [])],
-                    saldoDisponivel: (parseValue(investments.saldoDisponivel) || 0) + valor
-                }; 
-                setInvestments(u); 
-                save(u); 
-                setSyncStatus(`Provento de ${formatBRL(valor)} registado em Movimentações!`);
+                setInvestments(prev => {
+                    const mov = registrarMovimentacao(null, ativo, "Crédito (Provento)", 1, valor);
+                    const next = {
+                        ...prev, 
+                        dividendos: [...(prev.dividendos||[]), {
+                            id: Date.now().toString(), 
+                            data: new Date().toLocaleDateString('pt-BR'), 
+                            ativo: ativo.toUpperCase(), 
+                            tipo: "Dividendo", 
+                            valor: valor
+                        }],
+                        movimentacoes: [mov, ...(prev.movimentacoes || [])],
+                        saldoDisponivel: (parseValue(prev.saldoDisponivel) || 0) + valor
+                    };
+                    save(next);
+                    return next;
+                });
+                
+                setSyncStatus(`Provento creditado e registado!`);
                 setTimeout(() => setSyncStatus(""), 3000);
             };
 
@@ -235,28 +236,30 @@
 
                 const totalVenda = qtdVenda * vUnit;
 
-                let updatedList;
-                if (cat === 'caixa') {
-                    const restante = item.valorAtual - qtdVenda;
-                    if (restante <= 0) updatedList = investments[cat].filter(i => i.id !== idAtivo);
-                    else updatedList = investments[cat].map(i => i.id === idAtivo ? {...i, valorAtual: restante} : i);
-                } else {
-                    const restante = item.quantidade - qtdVenda;
-                    if (restante <= 0) updatedList = investments[cat].filter(i => i.id !== idAtivo);
-                    else updatedList = investments[cat].map(i => i.id === idAtivo ? {...i, quantidade: restante} : i);
-                }
+                setInvestments(prev => {
+                    let updatedList;
+                    if (cat === 'caixa') {
+                        const restante = item.valorAtual - qtdVenda;
+                        if (restante <= 0) updatedList = prev[cat].filter(i => i.id !== idAtivo);
+                        else updatedList = prev[cat].map(i => i.id === idAtivo ? {...i, valorAtual: restante} : i);
+                    } else {
+                        const restante = item.quantidade - qtdVenda;
+                        if (restante <= 0) updatedList = prev[cat].filter(i => i.id !== idAtivo);
+                        else updatedList = prev[cat].map(i => i.id === idAtivo ? {...i, quantidade: restante} : i);
+                    }
 
-                const novaMov = registrarMovimentacao(dataVenda, cat === 'caixa' ? item.nome : item.ticker, 'Venda', qtdVenda, vUnit);
-                
-                const nextData = { 
-                    ...investments, 
-                    [cat]: updatedList, 
-                    movimentacoes: [novaMov, ...(investments.movimentacoes || [])],
-                    saldoDisponivel: (parseValue(investments.saldoDisponivel) || 0) + totalVenda
-                };
-                setInvestments(nextData);
-                save(nextData);
-                setSyncStatus(`Venda de ${formatBRL(totalVenda)} creditada no Saldo!`);
+                    const novaMov = registrarMovimentacao(dataVenda, cat === 'caixa' ? item.nome : item.ticker, 'Venda', qtdVenda, vUnit);
+                    const next = { 
+                        ...prev, 
+                        [cat]: updatedList, 
+                        movimentacoes: [novaMov, ...(prev.movimentacoes || [])],
+                        saldoDisponivel: (parseValue(prev.saldoDisponivel) || 0) + totalVenda
+                    };
+                    save(next);
+                    return next;
+                });
+
+                setSyncStatus(`Venda creditada no Saldo!`);
                 setTimeout(() => setSyncStatus(""), 3000);
             };
 
@@ -330,8 +333,11 @@
                     caixa: { ...totals.caixa },
                     alt: { ...totals.alt }
                 };
-                const updated = { ...investments, historico: [entry, ...(investments.historico || [])] };
-                setInvestments(updated); save(updated);
+                setInvestments(prev => {
+                    const updated = { ...prev, historico: [entry, ...(prev.historico || [])] };
+                    save(updated);
+                    return updated;
+                });
                 setSyncStatus("Snapshot salvo!"); setTimeout(() => setSyncStatus(""), 2000);
             };
 
@@ -348,31 +354,37 @@
                                         const t = prompt("Ticker:"); const q = prompt("Qtd:"); const p = prompt("P. Médio:");
                                         if(t && q) { 
                                             const totalOperacao = parseValue(q) * parseValue(p);
-                                            const item = {id: Date.now().toString(), ticker: t.toUpperCase(), quantidade: parseValue(q), precoMedio: parseValue(p), precoAtual: parseValue(p)};
-                                            const mov = registrarMovimentacao(null, t.toUpperCase(), 'Compra', q, p);
-                                            const u = {
-                                                ...investments, 
-                                                [cat]: [...(investments[cat]||[]), item], 
-                                                movimentacoes: [mov, ...(investments.movimentacoes || [])],
-                                                saldoDisponivel: (parseValue(investments.saldoDisponivel) || 0) - totalOperacao
-                                            }; 
-                                            setInvestments(u); save(u); 
-                                            setSyncStatus(`Compra registada e saldo atualizado!`);
+                                            setInvestments(prev => {
+                                                const item = {id: Date.now().toString(), ticker: t.toUpperCase(), quantidade: parseValue(q), precoMedio: parseValue(p), precoAtual: parseValue(p)};
+                                                const mov = registrarMovimentacao(null, t.toUpperCase(), 'Compra', q, p);
+                                                const next = {
+                                                    ...prev, 
+                                                    [cat]: [...(prev[cat]||[]), item], 
+                                                    movimentacoes: [mov, ...(prev.movimentacoes || [])],
+                                                    saldoDisponivel: (parseValue(prev.saldoDisponivel) || 0) - totalOperacao
+                                                };
+                                                save(next);
+                                                return next;
+                                            });
+                                            setSyncStatus(`Compra registada com sucesso!`);
                                             setTimeout(() => setSyncStatus(""), 3000);
                                         }
                                     } else {
                                         const n = prompt("Nome:"); const va = prompt("Vlr Aplicado:"); const vt = prompt("Vlr Atual:");
                                         if(n && va) { 
                                             const totalOperacao = parseValue(va);
-                                            const item = {id: Date.now().toString(), nome: n, valorAplicado: parseValue(va), valorAtual: parseValue(vt || va)};
-                                            const mov = registrarMovimentacao(null, n, 'Compra', 1, va);
-                                            const u = {
-                                                ...investments, 
-                                                [cat]: [...(investments[cat]||[]), item], 
-                                                movimentacoes: [mov, ...(investments.movimentacoes || [])],
-                                                saldoDisponivel: (parseValue(investments.saldoDisponivel) || 0) - totalOperacao
-                                            }; 
-                                            setInvestments(u); save(u); 
+                                            setInvestments(prev => {
+                                                const item = {id: Date.now().toString(), nome: n, valorAplicado: parseValue(va), valorAtual: parseValue(vt || va)};
+                                                const mov = registrarMovimentacao(null, n, 'Compra', 1, va);
+                                                const next = {
+                                                    ...prev, 
+                                                    [cat]: [...(prev[cat]||[]), item], 
+                                                    movimentacoes: [mov, ...(prev.movimentacoes || [])],
+                                                    saldoDisponivel: (parseValue(prev.saldoDisponivel) || 0) - totalOperacao
+                                                };
+                                                save(next);
+                                                return next;
+                                            });
                                             setSyncStatus(`Aplicação registada em Movimentações!`);
                                             setTimeout(() => setSyncStatus(""), 3000);
                                         }
@@ -415,7 +427,7 @@
                                                             <button onClick={() => lancarProvento(item.ticker)} className="bg-emerald-50 text-emerald-600 px-3 py-1 rounded-lg font-black text-[9px] uppercase tracking-widest border border-emerald-100 hover:bg-emerald-600 hover:text-white transition-all flex items-center gap-1"><LucideIcon name="Coins" size={12}/> Provento</button>
                                                         )}
                                                         <button onClick={() => venderAtivo(cat, item.id)} className="bg-rose-50 text-rose-600 px-3 py-1 rounded-lg font-black text-[9px] uppercase tracking-widest border border-rose-100 hover:bg-rose-600 hover:text-white transition-all">Vender</button>
-                                                        <button onClick={() => { if(confirm("Remover permanentemente da carteira?")) { const u = {...investments, [cat]: investments[cat].filter(i => i.id !== item.id)}; setInvestments(u); save(u); } }} className="text-slate-300 hover:text-rose-500"><LucideIcon name="Trash2" size={16}/></button>
+                                                        <button onClick={() => { if(confirm("Remover permanentemente da carteira?")) { setInvestments(prev => { const next = {...prev, [cat]: prev[cat].filter(i => i.id !== item.id)}; save(next); return next; }); } }} className="text-slate-300 hover:text-rose-500"><LucideIcon name="Trash2" size={16}/></button>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -442,7 +454,8 @@
                         await new Promise(r => setTimeout(r, 400));
                     } catch(e) { console.error(e); }
                 }
-                const u = {...investments, [cat]: list}; setInvestments(u); save(u); setSyncStatus("Fim!"); setTimeout(()=>setSyncStatus(""), 2000);
+                setInvestments(prev => { const next = {...prev, [cat]: list}; save(next); return next; });
+                setSyncStatus("Fim!"); setTimeout(()=>setSyncStatus(""), 2000);
             };
 
             return (
@@ -451,7 +464,7 @@
                         <div className="flex items-center gap-4">
                             <img src="logo.png" alt="Logo" className="h-20 w-auto" />
                             <div className="flex flex-col">
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1">Management Elite v9.3</p>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1">Management Elite v9.4</p>
                             </div>
                         </div>
                         <nav className="flex bg-white p-2 rounded-[1.5rem] shadow-sm border border-slate-100 overflow-x-auto no-scrollbar max-w-full">
@@ -548,7 +561,7 @@
                                                         <td className="px-10 py-6 text-center font-bold">{m.quantidade < 1 ? m.quantidade.toFixed(8).replace(/\.?0+$/, "") : m.quantidade.toLocaleString()}</td>
                                                         <td className="px-10 py-6 text-right font-bold text-slate-400">{formatBRL(m.valorUnitario)}</td>
                                                         <td className="px-10 py-6 text-right font-black text-[#133054]">{formatBRL(m.valorTotal)}</td>
-                                                        <td className="px-10 py-6 text-right"><button onClick={() => { if(confirm("Apagar registo desta movimentação? (Não altera o saldo atual)")) { const u = {...investments, movimentacoes: investments.movimentacoes.filter(x => x.id !== m.id)}; setInvestments(u); save(u); } }} className="text-slate-200 hover:text-rose-500"><LucideIcon name="Trash2" size={16}/></button></td>
+                                                        <td className="px-10 py-6 text-right"><button onClick={() => { if(confirm("Apagar registo desta movimentação? (Não altera o saldo atual)")) { setInvestments(prev => { const next = {...prev, movimentacoes: prev.movimentacoes.filter(x => x.id !== m.id)}; save(next); return next; }); } }} className="text-slate-200 hover:text-rose-500"><LucideIcon name="Trash2" size={16}/></button></td>
                                                     </tr>
                                                 ))}
                                                 {(investments.movimentacoes || []).length === 0 && <tr><td colSpan="7" className="px-10 py-20 text-center text-slate-300 font-bold uppercase text-[10px] tracking-[0.4em]">Nenhuma movimentação registada</td></tr>}
@@ -598,7 +611,7 @@
                                     <table className="w-full text-left">
                                         <thead className="bg-slate-50 text-[10px] uppercase tracking-widest text-slate-400 font-black"><tr><th className="px-10 py-6">Data</th><th className="px-10 py-6">Ativo</th><th className="px-10 py-6 text-right">Valor</th><th className="px-10 py-6"></th></tr></thead>
                                         <tbody className="divide-y divide-slate-100 tabular text-sm">
-                                            {(investments.dividendos || []).map(item => ( <tr key={item.id}><td className="px-10 py-6 text-slate-500 font-bold">{item.data}</td><td className="px-10 py-6 font-black text-slate-900 uppercase">{item.ativo}</td><td className="px-10 py-6 text-right font-black text-emerald-600">{formatBRL(item.valor)}</td><td className="px-10 py-6 text-right"><button onClick={() => { if(confirm("Remover provento? (O saldo não será alterado automaticamente)")) { const u = {...investments, dividendos: investments.dividendos.filter(i => i.id !== item.id)}; setInvestments(u); save(u); } }} className="text-slate-200 hover:text-rose-500"><LucideIcon name="Trash2" size={18}/></button></td></tr> ))}
+                                            {(investments.dividendos || []).map(item => ( <tr key={item.id}><td className="px-10 py-6 text-slate-500 font-bold">{item.data}</td><td className="px-10 py-6 font-black text-slate-900 uppercase">{item.ativo}</td><td className="px-10 py-6 text-right font-black text-emerald-600">{formatBRL(item.valor)}</td><td className="px-10 py-6 text-right"><button onClick={() => { if(confirm("Remover provento? (O saldo não será alterado automaticamente)")) { setInvestments(prev => { const next = {...prev, dividendos: prev.dividendos.filter(i => i.id !== item.id)}; save(next); return next; }); } }} className="text-slate-200 hover:text-rose-500"><LucideIcon name="Trash2" size={18}/></button></td></tr> ))}
                                         </tbody>
                                     </table>
                                 </div>
@@ -653,13 +666,16 @@
                                                     if(confirm(`Deseja sincronizar o saldo com o total de proventos (R$ ${totalDiva.toFixed(2)})? Isso substituirá o saldo atual.`)) {
                                                         const diff = totalDiva - currentSaldo;
                                                         if (Math.abs(diff) > 0.01) {
-                                                            const mov = registrarMovimentacao(null, "AJUSTE DE SALDO", diff > 0 ? "Crédito (Sinc. Proventos)" : "Débito (Sinc. Saldo)", 1, Math.abs(diff));
-                                                            const u = {
-                                                                ...investments, 
-                                                                saldoDisponivel: totalDiva, 
-                                                                movimentacoes: [mov, ...(investments.movimentacoes || [])]
-                                                            }; 
-                                                            setInvestments(u); save(u);
+                                                            setInvestments(prev => {
+                                                                const mov = registrarMovimentacao(null, "AJUSTE DE SALDO", diff > 0 ? "Crédito (Sinc. Proventos)" : "Débito (Sinc. Saldo)", 1, Math.abs(diff));
+                                                                const next = {
+                                                                    ...prev, 
+                                                                    saldoDisponivel: totalDiva, 
+                                                                    movimentacoes: [mov, ...(prev.movimentacoes || [])]
+                                                                };
+                                                                save(next);
+                                                                return next;
+                                                            });
                                                         }
                                                     }
                                                 }} className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-md">Sincronizar com Proventos</button>
@@ -672,22 +688,23 @@
                                                         const diff = newSaldo - currentSaldo;
                                                         if (Math.abs(diff) < 0.01) return;
 
-                                                        const mov = registrarMovimentacao(
-                                                            null, 
-                                                            "SALDO EM CONTA", 
-                                                            diff > 0 ? "Ajuste (Entrada)" : "Ajuste (Saída)", 
-                                                            1, 
-                                                            Math.abs(diff)
-                                                        );
-
-                                                        const u = {
-                                                            ...investments, 
-                                                            saldoDisponivel: newSaldo,
-                                                            movimentacoes: [mov, ...(investments.movimentacoes || [])]
-                                                        }; 
-                                                        setInvestments(u); 
-                                                        save(u); 
-                                                        setSyncStatus(`Ajuste registado com sucesso!`);
+                                                        setInvestments(prev => {
+                                                            const mov = registrarMovimentacao(
+                                                                null, 
+                                                                "SALDO EM CONTA", 
+                                                                diff > 0 ? "Ajuste (Entrada)" : "Ajuste (Saída)", 
+                                                                1, 
+                                                                Math.abs(diff)
+                                                            );
+                                                            const next = {
+                                                                ...prev, 
+                                                                saldoDisponivel: newSaldo,
+                                                                movimentacoes: [mov, ...(prev.movimentacoes || [])]
+                                                            };
+                                                            save(next);
+                                                            return next;
+                                                        });
+                                                        setSyncStatus(`Ajuste registado e saldo atualizado!`);
                                                         setTimeout(() => setSyncStatus(""), 3000);
                                                     }
                                                 }} className="text-[9px] font-black text-emerald-600 uppercase underline mt-2">Ajustar Saldo Manual</button>
