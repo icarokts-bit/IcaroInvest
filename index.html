@@ -50,7 +50,7 @@
         <div class="flex items-center justify-center min-h-screen">
             <div class="text-center">
                 <div class="w-12 h-12 border-4 border-[#133054] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">Sincronizando IcaroInvest Elite v8.8...</p>
+                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">Sincronizando IcaroInvest Elite v8.9...</p>
             </div>
         </div>
     </div>
@@ -113,8 +113,8 @@
                     <LucideIcon name={icon} size={24} />
                 </div>
                 <div className="min-w-0 flex-1">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1 truncate">{title}</p>
-                    <h3 className="text-huge font-black text-slate-900 tabular no-break">{value}</h3>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 truncate">{title}</p>
+                    <h3 className={`text-huge font-black tabular no-break ${title.includes('Var.') ? (parseValue(value.replace(/[^0-9,-]/g, '').replace(',', '.')) >= 0 ? 'text-emerald-600' : 'text-rose-600') : 'text-slate-900'}`}>{value}</h3>
                     {subValue && <p className={`text-[9px] font-bold mt-1 uppercase ${subValue.startsWith('-') ? 'text-rose-500' : 'text-emerald-500'}`}>{subValue}</p>}
                 </div>
             </div>
@@ -408,7 +408,7 @@
                                                         {(cat === 'acoes' || cat === 'realEstate') && (
                                                             <button onClick={() => lancarProvento(item.ticker)} className="bg-emerald-50 text-emerald-600 px-3 py-1 rounded-lg font-black text-[9px] uppercase tracking-widest border border-emerald-100 hover:bg-emerald-600 hover:text-white transition-all flex items-center gap-1"><LucideIcon name="Coins" size={12}/> Provento</button>
                                                         )}
-                                                        <button onClick={() => venderAtivo(cat, item.id)} className="bg-rose-50 text-rose-600 px-3 py-1 rounded-lg font-black text-[9px] uppercase tracking-widest border border-rose-100 hover:bg-rose-600 hover:text-white transition-all">Vender</button>
+                                                        <button onClick={() => venderAtivo(cat, id)} className="bg-rose-50 text-rose-600 px-3 py-1 rounded-lg font-black text-[9px] uppercase tracking-widest border border-rose-100 hover:bg-rose-600 hover:text-white transition-all">Vender</button>
                                                         <button onClick={() => { if(confirm("Remover permanentemente?")) { const u = {...investments, [cat]: investments[cat].filter(i => i.id !== item.id)}; setInvestments(u); save(u); } }} className="text-slate-300 hover:text-rose-500"><LucideIcon name="Trash2" size={16}/></button>
                                                     </div>
                                                 </td>
@@ -445,7 +445,7 @@
                         <div className="flex items-center gap-4">
                             <img src="logo.png" alt="Logo" className="h-20 w-auto" />
                             <div className="flex flex-col">
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1">Management Elite v8.8</p>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1">Management Elite v8.9</p>
                             </div>
                         </div>
                         <nav className="flex bg-white p-2 rounded-[1.5rem] shadow-sm border border-slate-100 overflow-x-auto no-scrollbar max-w-full">
@@ -471,8 +471,17 @@
                     <main className="space-y-10 animate-in">
                         {activeTab === 'dashboard' ? (
                             <div className="space-y-10">
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-4">
                                     <StatCard isMobile={isMobile} title="Saldo em Conta" value={formatBRL(totals.saldo)} icon="Wallet" colorClass="bg-emerald-600" />
+                                    {/* NOVO CARD: VARIAÇÃO DIÁRIA */}
+                                    <StatCard 
+                                        isMobile={isMobile} 
+                                        title="Var. Dia (R$)" 
+                                        value={formatBRL(totals.varDiaTotal)} 
+                                        subValue={`${totals.varDiaTotalPct.toFixed(2)}%`}
+                                        icon="Activity" 
+                                        colorClass={totals.varDiaTotal >= 0 ? "bg-emerald-500" : "bg-rose-500"} 
+                                    />
                                     <StatCard isMobile={isMobile} title="Patrimônio Total" value={formatBRL(totals.total)} icon="PieChart" colorClass="bg-[#133054]" />
                                     <StatCard isMobile={isMobile} title="Bolsa / Ações" value={formatBRL(totals.acoes.atual)} icon="BarChart3" colorClass="bg-[#bfa260]" />
                                     <StatCard isMobile={isMobile} title="Real Estate" value={formatBRL(totals.re.atual)} icon="Building2" colorClass="bg-emerald-500" />
