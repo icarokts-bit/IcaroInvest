@@ -141,17 +141,31 @@
             };
 
             const getSectionStats = (list, type = 'ticker') => {
-                let investido = 0; let atual = 0;
+                let investido = 0; let atual = 0; let variacaoDiaR$ = 0;
                 if (type === 'ticker') {
                     investido = (list || []).reduce((acc, i) => acc + (parseValue(i.quantidade) * parseValue(i.precoMedio)), 0);
                     atual = (list || []).reduce((acc, i) => acc + (parseValue(i.quantidade) * parseValue(i.precoAtual)), 0);
+                    
+                    // Cálculo da Variação do Dia
+                    (list || []).forEach(i => {
+                        const qty = parseValue(i.quantidade);
+                        const cur = parseValue(i.precoAtual);
+                        const varPct = parseValue(i.variacaoDia);
+                        if (varPct !== 0) {
+                            // Preço de ontem = Atual / (1 + VarPct/100)
+                            const prevPrice = cur / (1 + (varPct / 100));
+                            variacaoDiaR$ += (cur - prevPrice) * qty;
+                        }
+                    });
                 } else {
                     investido = (list || []).reduce((acc, i) => acc + parseValue(i.valorAplicado), 0);
                     atual = (list || []).reduce((acc, i) => acc + parseValue(i.valorAtual), 0);
                 }
                 const lucro = atual - investido;
                 const lucroPct = investido > 0 ? (lucro / investido) * 100 : 0;
-                return { investido, atual, lucro, lucroPct };
+                const varDiaPct = atual > 0 ? (variacaoDiaR$ / (atual - variacaoDiaR$)) * 100 : 0;
+                
+                return { investido, atual, lucro, lucroPct, variacaoDiaR$, varDiaPct };
             };
 
             const totals = useMemo(() => {
@@ -168,13 +182,28 @@
 
                 const acoes = sAcoes;
                 const re = sRE;
-                const caixa = { investido: sCaixaM.investido + sCaixaT.investido, atual: sCaixaM.atual + sCaixaT.atual, lucro: sCaixaM.lucro + sCaixaT.lucro };
+                const caixa = { 
+                    investido: sCaixaM.investido + sCaixaT.investido, 
+                    atual: sCaixaM.atual + sCaixaT.atual, 
+                    lucro: sCaixaM.lucro + sCaixaT.lucro,
+                    variacaoDiaR$: sCaixaT.variacaoDiaR$
+                };
                 caixa.lucroPct = caixa.investido > 0 ? (caixa.lucro / caixa.investido) * 100 : 0;
+                caixa.varDiaPct = caixa.atual > 0 ? (caixa.variacaoDiaR$ / (caixa.atual - caixa.variacaoDiaR$)) * 100 : 0;
                 
-                const alt = { investido: sAltF.investido + sAltS.investido + sAltC.investido, atual: sAltF.atual + sAltS.atual + sAltC.atual, lucro: sAltF.lucro + sAltS.lucro + sAltC.lucro };
+                const alt = { 
+                    investido: sAltF.investido + sAltS.investido + sAltC.investido, 
+                    atual: sAltF.atual + sAltS.atual + sAltC.atual, 
+                    lucro: sAltF.lucro + sAltS.lucro + sAltC.lucro,
+                    variacaoDiaR$: sAltS.variacaoDiaR$ + sAltC.variacaoDiaR$
+                };
                 alt.lucroPct = alt.investido > 0 ? (alt.lucro / alt.investido) * 100 : 0;
+                alt.varDiaPct = alt.atual > 0 ? (alt.variacaoDiaR$ / (alt.atual - alt.variacaoDiaR$)) * 100 : 0;
 
-                return { acoes, re, caixa, alt, sAltF, sAltS, sAltC, dividendos, total: acoes.atual + re.atual + caixa.atual + alt.atual };
+                const varDiaTotal = acoes.variacaoDiaR$ + re.variacaoDiaR$ + caixa.variacaoDiaR$ + alt.variacaoDiaR$;
+                const varDiaTotalPct = (acoes.atual + re.atual + caixa.atual + alt.atual) > 0 ? (varDiaTotal / ((acoes.atual + re.atual + caixa.atual + alt.atual) - varDiaTotal)) * 100 : 0;
+
+                return { acoes, re, caixa, alt, sAltF, sAltS, sAltC, dividendos, total: acoes.atual + re.atual + caixa.atual + alt.atual, varDiaTotal, varDiaTotalPct };
             }, [investments]);
 
             const capturarSnapshot = () => {
@@ -232,6 +261,7 @@
                                         {type === 'ticker' && <th className="px-10 py-6 text-center">Qtd</th>}
                                         <th className="px-10 py-6 text-right">Custo</th>
                                         <th className="px-10 py-6 text-right">Atual</th>
+                                        {type === 'ticker' && <th className="px-10 py-6 text-right">Var. Dia %</th>}
                                         <th className="px-10 py-6 text-right">Patrimônio</th>
                                         <th className="px-10 py-6 text-right">Lucro R$</th>
                                         <th className="px-10 py-6 text-right">Ação</th>
@@ -249,6 +279,11 @@
                                                 {type === 'ticker' && <td className="px-10 py-6 text-center font-bold">{q < 1 ? q.toFixed(8).replace(/\.?0+$/, "") : q.toLocaleString()}</td>}
                                                 <td className="px-10 py-6 text-right font-bold text-slate-500">{formatBRL(pC)}</td>
                                                 <td className="px-10 py-6 text-right font-black text-blue-600">{formatBRL(pA)}</td>
+                                                {type === 'ticker' && (
+                                                    <td className={`px-10 py-6 text-right font-bold ${parseValue(item.variacaoDia) >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                                        {item.variacaoDia !== undefined ? `${parseValue(item.variacaoDia).toFixed(2)}%` : '-'}
+                                                    </td>
+                                                )}
                                                 <td className="px-10 py-6 text-right font-black text-slate-900">{formatBRL(pat)}</td>
                                                 <td className={`px-10 py-6 text-right font-black ${lucro >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{formatBRL(lucro)}</td>
                                                 <td className="px-10 py-6 text-right">
@@ -277,7 +312,7 @@
 
             const sync = async (cat) => {
                 const list = [...(investments[cat] || [])];
-                setSyncStatus("Atualizando...");
+                setSyncStatus("Sincronizando ativos...");
                 for(let i=0; i<list.length; i++) {
                     const t = list[i].ticker;
                     try {
@@ -285,12 +320,19 @@
                         const url = isC ? `https://brapi.dev/api/v2/crypto?coin=${t}&currency=BRL` : `https://brapi.dev/api/quote/${t}`;
                         const res = await fetch(url, { headers: { 'Authorization': `Bearer ${BRAPI_TOKEN}` } });
                         const d = await res.json();
-                        if(d.coins?.[0]) list[i].precoAtual = d.coins[0].regularMarketPrice;
-                        else if(d.results?.[0]) list[i].precoAtual = d.results[0].regularMarketPrice;
+                        
+                        if(d.coins?.[0]) {
+                            list[i].precoAtual = d.coins[0].regularMarketPrice;
+                            list[i].variacaoDia = d.coins[0].coinChangePercent;
+                        } else if(d.results?.[0]) {
+                            list[i].precoAtual = d.results[0].regularMarketPrice;
+                            list[i].variacaoDia = d.results[0].regularMarketChangePercent;
+                        }
+                        
                         await new Promise(r => setTimeout(r, 400));
-                    } catch(e) {}
+                    } catch(e) { console.error(`Erro ao sincronizar ${t}:`, e); }
                 }
-                const u = {...investments, [cat]: list}; setInvestments(u); save(u); setSyncStatus("Fim!"); setTimeout(()=>setSyncStatus(""), 2000);
+                const u = {...investments, [cat]: list}; setInvestments(u); save(u); setSyncStatus("Finalizado!"); setTimeout(()=>setSyncStatus(""), 2000);
             };
 
             return (
@@ -300,7 +342,7 @@
                             <div className="bg-slate-900 text-white p-4 rounded-[2rem] shadow-2xl"><LucideIcon name="ShieldCheck" size={32} /></div>
                             <div>
                                 <h1 className="text-3xl font-black tracking-tighter uppercase leading-none">ICARO<span className="text-blue-600">INVEST</span></h1>
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1">Management Elite v7.7</p>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1">Management Elite v7.8</p>
                             </div>
                         </div>
                         <nav className="flex bg-white p-2 rounded-[1.5rem] shadow-xl border border-slate-100 overflow-x-auto no-scrollbar max-w-full">
@@ -485,22 +527,36 @@
                                         const inv = sF.investido + sS.investido + sC.investido;
                                         const atu = sF.atual + sS.atual + sC.atual;
                                         const luc = atu - inv;
-                                        s = { investido: inv, atual: atu, lucro: luc, lucroPct: inv > 0 ? (luc / inv) * 100 : 0 };
+                                        const varR$ = sS.variacaoDiaR$ + sC.variacaoDiaR$;
+                                        const varPct = atu > 0 ? (varR$ / (atu - varR$)) * 100 : 0;
+                                        s = { investido: inv, atual: atu, lucro: luc, lucroPct: inv > 0 ? (luc / inv) * 100 : 0, varDiaR$: varR$, varDiaPct: varPct };
                                     } else {
                                         const catMap = { acoes: 'ticker', realEstate: 'ticker', caixa: 'manual' };
                                         s = getSectionStats(investments[activeTab], catMap[activeTab]);
+                                        if (activeTab === 'caixa') {
+                                            const sT = getSectionStats(investments.caixaTicker, 'ticker');
+                                            s.variacaoDiaR$ = sT.variacaoDiaR$;
+                                            s.varDiaPct = s.atual > 0 ? (s.variacaoDiaR$ / (s.atual - s.variacaoDiaR$)) * 100 : 0;
+                                        }
                                     }
                                     return (
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                                             <StatCard isMobile={isMobile} title="Total Investido" value={formatBRL(s.investido)} icon="PiggyBank" colorClass="bg-slate-900" />
                                             <StatCard isMobile={isMobile} title="Lucro Bruto" value={formatBRL(s.lucro)} subValue={`${s.lucroPct.toFixed(2)}%`} icon="TrendingUp" colorClass={s.lucro >= 0 ? "bg-emerald-500" : "bg-rose-500"} />
+                                            <StatCard isMobile={isMobile} title="Vlr Variação Dia" value={formatBRL(s.varDiaR$ || 0)} icon="Activity" colorClass={(s.varDiaR$ || 0) >= 0 ? "bg-emerald-400" : "bg-rose-400"} />
+                                            <StatCard isMobile={isMobile} title="% Variação Dia" value={`${(s.varDiaPct || 0).toFixed(2)}%`} icon="Percent" colorClass={(s.varDiaPct || 0) >= 0 ? "bg-emerald-400" : "bg-rose-400"} />
                                             <StatCard isMobile={isMobile} title="Patrimônio Atual" value={formatBRL(s.atual)} icon="Wallet" colorClass="bg-blue-600" />
                                         </div>
                                     );
                                 })()}
                                 {activeTab === 'acoes' && renderTableSection('acoes', 'Carteira Principal de Ações', 'ticker')}
                                 {activeTab === 'realEstate' && renderTableSection('realEstate', 'Real Estate (FIIs)', 'ticker')}
-                                {activeTab === 'caixa' && renderTableSection('caixa', 'Reserva e Liquidez', 'manual')}
+                                {activeTab === 'caixa' && (
+                                    <>
+                                        {renderTableSection('caixa', 'Reserva e Liquidez (Manual)', 'manual')}
+                                        {renderTableSection('caixaTicker', 'Renda Fixa Cotada (Tickers)', 'ticker')}
+                                    </>
+                                )}
                                 {activeTab === 'alternativos' && (
                                     <>
                                         {renderTableSection('altFunds', 'Fundos de Investimento', 'manual')}
