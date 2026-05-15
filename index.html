@@ -54,7 +54,7 @@
         <div class="flex items-center justify-center min-h-screen">
             <div class="text-center">
                 <div class="w-12 h-12 border-4 border-[#133054] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">Sincronizando IcaroInvest Elite v10.6...</p>
+                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">Sincronizando IcaroInvest Elite v10.7...</p>
             </div>
         </div>
     </div>
@@ -285,6 +285,94 @@
                 setGlobalSyncing(false); setSyncStatus("Carteira Sincronizada!"); setTimeout(() => setSyncStatus(""), 3000);
             };
 
+            // Função para gerir Compra/Venda de ativos existentes
+            const handleTrade = (cat, item, type, operation) => {
+                const isBuy = operation === 'BUY';
+                const label = isBuy ? 'Compra' : 'Venda';
+                
+                if (type === 'ticker') {
+                    const qInput = prompt(`Quantidade de ${label} para ${item.ticker}:`, "1");
+                    const pInput = prompt(`Preço Unitário da ${label} de ${item.ticker}:`, item.precoAtual || item.precoMedio);
+                    
+                    if (qInput && pInput) {
+                        const qty = parseValue(qInput);
+                        const price = parseValue(pInput);
+                        const totalOp = qty * price;
+
+                        if (!isBuy && qty > item.quantidade) {
+                            alert("Quantidade insuficiente para venda.");
+                            return;
+                        }
+
+                        let nextInvestments = { ...investments };
+                        const list = [...(nextInvestments[cat] || [])];
+                        const idx = list.findIndex(i => i.id === item.id);
+                        
+                        if (idx !== -1) {
+                            if (isBuy) {
+                                // Média Ponderada para Compra
+                                const currentTotalCost = list[idx].quantidade * list[idx].precoMedio;
+                                const newQty = list[idx].quantidade + qty;
+                                const newAvg = (currentTotalCost + totalOp) / newQty;
+                                list[idx].quantidade = newQty;
+                                list[idx].precoMedio = newAvg;
+                                nextInvestments.saldoDisponivel = parseValue(nextInvestments.saldoDisponivel) - totalOp;
+                            } else {
+                                // Venda diminui quantidade (preço médio permanece)
+                                list[idx].quantidade = list[idx].quantidade - qty;
+                                nextInvestments.saldoDisponivel = parseValue(nextInvestments.saldoDisponivel) + totalOp;
+                                if (list[idx].quantidade <= 0) list.splice(idx, 1);
+                            }
+                            
+                            nextInvestments[cat] = list;
+                            const mov = registrarMovimentacao(null, item.ticker, isBuy ? 'Compra' : 'Venda', qty, price);
+                            nextInvestments.movimentacoes = [mov, ...(nextInvestments.movimentacoes || [])];
+                            
+                            setInvestments(nextInvestments);
+                            save(nextInvestments);
+                            setSyncStatus(`${label} registada!`);
+                            setTimeout(() => setSyncStatus(""), 2000);
+                        }
+                    }
+                } else {
+                    // Manual (Aporte / Retirada)
+                    const vInput = prompt(`Valor do ${isBuy ? 'Aporte' : 'Resgate'} em ${item.nome}:`, "100");
+                    if (vInput) {
+                        const val = parseValue(vInput);
+                        if (!isBuy && val > item.valorAtual) {
+                            alert("Saldo insuficiente para resgate.");
+                            return;
+                        }
+                        
+                        let nextInvestments = { ...investments };
+                        const list = [...(nextInvestments[cat] || [])];
+                        const idx = list.findIndex(i => i.id === item.id);
+                        
+                        if (idx !== -1) {
+                            if (isBuy) {
+                                list[idx].valorAtual += val;
+                                list[idx].valorAplicado += val;
+                                nextInvestments.saldoDisponivel -= val;
+                            } else {
+                                list[idx].valorAtual -= val;
+                                // Reduzir proporcionalmente o aplicado ou apenas o atual? Reduziremos atual e saldo aumenta
+                                nextInvestments.saldoDisponivel += val;
+                                if (list[idx].valorAtual <= 0) list.splice(idx, 1);
+                            }
+                            
+                            nextInvestments[cat] = list;
+                            const mov = registrarMovimentacao(null, item.nome, isBuy ? 'Aporte' : 'Resgate', 1, val);
+                            nextInvestments.movimentacoes = [mov, ...(nextInvestments.movimentacoes || [])];
+                            
+                            setInvestments(nextInvestments);
+                            save(nextInvestments);
+                            setSyncStatus(`${isBuy ? 'Aporte' : 'Resgate'} concluído!`);
+                            setTimeout(() => setSyncStatus(""), 2000);
+                        }
+                    }
+                }
+            };
+
             const renderTableSection = (cat, title, type = 'ticker') => {
                 const data = (investments[cat] || []);
                 return (
@@ -307,12 +395,12 @@
                                         setInvestments(next); save(next);
                                     }
                                 }
-                            }} className="bg-[#133054] text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-black shadow-lg">+ Comprar Ativo</button>
+                            }} className="bg-[#133054] text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-black shadow-lg">+ Novo Ativo</button>
                         </div>
                         <div className="overflow-x-auto custom-scroll">
                             <table className="w-full text-left">
                                 <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                                    <tr><th className="px-10 py-6">Ativo</th>{type === 'ticker' && <th className="px-10 py-6 text-center">Qtd</th>}<th className="px-10 py-6 text-right">Custo</th><th className="px-10 py-6 text-right">Atual</th>{type === 'ticker' && <th className="px-10 py-6 text-right">Var. Dia %</th>}<th className="px-10 py-6 text-right">Património</th><th className="px-10 py-6 text-right">Ação</th></tr>
+                                    <tr><th className="px-10 py-6">Ativo</th>{type === 'ticker' && <th className="px-10 py-6 text-center">Qtd</th>}<th className="px-10 py-6 text-right">Custo</th><th className="px-10 py-6 text-right">Atual</th>{type === 'ticker' && <th className="px-10 py-6 text-right">Var. Dia %</th>}<th className="px-10 py-6 text-right">Património</th><th className="px-10 py-6 text-right">Gestão</th></tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 tabular text-sm">
                                     {data.map(item => {
@@ -329,9 +417,17 @@
                                                 {type === 'ticker' && <td className={`px-10 py-6 text-right font-bold ${parseValue(item.variacaoDia) >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>{item.variacaoDia !== undefined ? `${parseValue(item.variacaoDia).toFixed(2)}%` : '-'}</td>}
                                                 <td className="px-10 py-6 text-right font-black text-slate-900">{formatBRL(pat)}</td>
                                                 <td className="px-10 py-6 text-right">
-                                                    <button onClick={() => { if(confirm(`Eliminar ${type === 'ticker' ? item.ticker : item.nome}?`)) { const next = {...investments, [cat]: investments[cat].filter(i => i.id !== item.id)}; setInvestments(next); save(next); } }} className="bg-rose-50 text-rose-500 hover:bg-rose-600 hover:text-white p-3 rounded-xl transition-all shadow-sm">
-                                                        <LucideIcon name="Trash2" size={16}/>
-                                                    </button>
+                                                    <div className="flex justify-end gap-2">
+                                                        <button onClick={() => handleTrade(cat, item, type, 'BUY')} className="bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white p-2 rounded-lg transition-all shadow-sm border border-emerald-100" title="Compra / Aporte">
+                                                            <LucideIcon name="PlusCircle" size={16}/>
+                                                        </button>
+                                                        <button onClick={() => handleTrade(cat, item, type, 'SELL')} className="bg-orange-50 text-orange-600 hover:bg-orange-600 hover:text-white p-2 rounded-lg transition-all shadow-sm border border-orange-100" title="Venda / Resgate">
+                                                            <LucideIcon name="MinusCircle" size={16}/>
+                                                        </button>
+                                                        <button onClick={() => { if(confirm(`Eliminar definitivamente ${type === 'ticker' ? item.ticker : item.nome}?`)) { const next = {...investments, [cat]: investments[cat].filter(i => i.id !== item.id)}; setInvestments(next); save(next); } }} className="bg-rose-50 text-rose-500 hover:bg-rose-600 hover:text-white p-2 rounded-lg transition-all shadow-sm border border-rose-100" title="Remover">
+                                                            <LucideIcon name="Trash2" size={16}/>
+                                                        </button>
+                                                    </div>
                                                 </td>
                                             </tr>
                                         );
@@ -469,7 +565,7 @@
                         {activeTab === 'caixa' && ( <> {renderTableSection('caixa', 'Reserva e Caixa (Manual)', 'manual')} {renderTableSection('caixaTicker', 'Reserva Cotada (Tickers)', 'ticker')} </> )}
                         {activeTab === 'alternativos' && ( <> {renderTableSection('altFunds', 'Fundos Alternativos', 'manual')} {renderTableSection('altStocks', 'Stocks Alternativos', 'ticker')} {renderTableSection('altCrypto', 'Crypto Assets', 'ticker')} </> )}
                     </main>
-                    <footer className="mt-20 py-10 text-center border-t border-slate-100 text-[10px] font-black text-slate-300 uppercase tracking-[0.5em]">IcaroInvest Elite Management v10.6</footer>
+                    <footer className="mt-20 py-10 text-center border-t border-slate-100 text-[10px] font-black text-slate-300 uppercase tracking-[0.5em]">IcaroInvest Elite Management v10.7</footer>
                 </div>
             );
         };
