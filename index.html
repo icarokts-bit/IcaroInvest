@@ -54,7 +54,7 @@
         <div class="flex items-center justify-center min-h-screen">
             <div class="text-center">
                 <div class="w-12 h-12 border-4 border-[#133054] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">Sincronizando IcaroInvest Elite v11.0...</p>
+                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">Sincronizando IcaroInvest Elite v11.1...</p>
             </div>
         </div>
     </div>
@@ -436,7 +436,7 @@
                                                 <td className="px-10 py-6 text-right font-black text-slate-900">{formatBRL(pat)}</td>
                                                 <td className="px-10 py-6 text-right">
                                                     <div className="flex justify-end items-center gap-2">
-                                                        {(cat === 'acoes' || cat === 'realEstate') && (
+                                                        {(cat === 'acoes' || cat === 'realEstate' || cat === 'caixaTicker') && (
                                                             <button onClick={() => lancarProvento(item.ticker)} className="bg-emerald-50 text-emerald-600 px-3 py-2 rounded-xl border border-emerald-100 hover:bg-emerald-600 hover:text-white transition-all flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
                                                                 <LucideIcon name="Coins" size={12}/> Provento
                                                             </button>
@@ -674,7 +674,7 @@
                         {activeTab === 'caixa' && ( <> {renderTableSection('caixa', 'Reserva Manual', 'manual')} {renderTableSection('caixaTicker', 'Reserva Cotada', 'ticker')} </> )}
                         {activeTab === 'alternativos' && ( <> {renderTableSection('altFunds', 'Fundos Alternativos', 'manual')} {renderTableSection('altStocks', 'Stocks Alternativos', 'ticker')} {renderTableSection('altCrypto', 'Crypto Assets', 'ticker')} </> )}
                     </main>
-                    <footer className="mt-20 py-10 text-center border-t border-slate-100 text-[10px] font-black text-slate-300 uppercase tracking-[0.5em]">IcaroInvest Elite Management v11.0</footer>
+                    <footer className="mt-20 py-10 text-center border-t border-slate-100 text-[10px] font-black text-slate-300 uppercase tracking-[0.5em]">IcaroInvest Elite Management v11.1</footer>
                 </div>
             );
         };
