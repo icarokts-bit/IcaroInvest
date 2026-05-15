@@ -50,12 +50,12 @@
         <div class="flex items-center justify-center min-h-screen">
             <div class="text-center">
                 <div class="w-12 h-12 border-4 border-[#133054] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">Iniciando IcaroInvest Elite v8.6...</p>
+                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">Iniciando IcaroInvest Elite v8.7...</p>
             </div>
         </div>
     </div>
 
-    <!-- Bibliotecas (Ordem Crítica para evitar erros de undefined) -->
+    <!-- Bibliotecas -->
     <script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
@@ -203,7 +203,7 @@
                 }; 
                 setInvestments(u); 
                 save(u); 
-                setSyncStatus(`Recebimento de ${formatBRL(valor)} movido para o Caixa!`);
+                setSyncStatus(`Recebimento de ${formatBRL(valor)} somado ao Saldo!`);
                 setTimeout(() => setSyncStatus(""), 3000);
             };
 
@@ -250,7 +250,7 @@
                 };
                 setInvestments(nextData);
                 save(nextData);
-                setSyncStatus(`Venda de ${formatBRL(totalVenda)} movida para o Caixa!`);
+                setSyncStatus(`Venda de ${formatBRL(totalVenda)} creditada no Saldo!`);
                 setTimeout(() => setSyncStatus(""), 3000);
             };
 
@@ -341,21 +341,37 @@
                                     if(type === 'ticker') {
                                         const t = prompt("Ticker:"); const q = prompt("Qtd:"); const p = prompt("P. Médio:");
                                         if(t && q) { 
+                                            const totalOperacao = parseValue(q) * parseValue(p);
                                             const item = {id: Date.now().toString(), ticker: t.toUpperCase(), quantidade: parseValue(q), precoMedio: parseValue(p), precoAtual: parseValue(p)};
                                             const mov = registrarMovimentacao(null, t.toUpperCase(), 'Compra', q, p);
-                                            const u = {...investments, [cat]: [...(investments[cat]||[]), item], movimentacoes: [mov, ...(investments.movimentacoes || [])]}; 
+                                            const u = {
+                                                ...investments, 
+                                                [cat]: [...(investments[cat]||[]), item], 
+                                                movimentacoes: [mov, ...(investments.movimentacoes || [])],
+                                                saldoDisponivel: (parseValue(investments.saldoDisponivel) || 0) - totalOperacao
+                                            }; 
                                             setInvestments(u); save(u); 
+                                            setSyncStatus(`Compra de ${formatBRL(totalOperacao)} subtraída do Saldo!`);
+                                            setTimeout(() => setSyncStatus(""), 3000);
                                         }
                                     } else {
                                         const n = prompt("Nome:"); const va = prompt("Vlr Aplicado:"); const vt = prompt("Vlr Atual:");
                                         if(n && va) { 
+                                            const totalOperacao = parseValue(va);
                                             const item = {id: Date.now().toString(), nome: n, valorAplicado: parseValue(va), valorAtual: parseValue(vt || va)};
                                             const mov = registrarMovimentacao(null, n, 'Compra', 1, va);
-                                            const u = {...investments, [cat]: [...(investments[cat]||[]), item], movimentacoes: [mov, ...(investments.movimentacoes || [])]}; 
+                                            const u = {
+                                                ...investments, 
+                                                [cat]: [...(investments[cat]||[]), item], 
+                                                movimentacoes: [mov, ...(investments.movimentacoes || [])],
+                                                saldoDisponivel: (parseValue(investments.saldoDisponivel) || 0) - totalOperacao
+                                            }; 
                                             setInvestments(u); save(u); 
+                                            setSyncStatus(`Aplicação de ${formatBRL(totalOperacao)} subtraída do Saldo!`);
+                                            setTimeout(() => setSyncStatus(""), 3000);
                                         }
                                     }
-                                }} className="bg-[#133054] text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-black shadow-lg">+ Adicionar</button>
+                                }} className="bg-[#133054] text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-black shadow-lg">+ Comprar</button>
                             </div>
                         </div>
                         <div className="overflow-x-auto custom-scroll">
@@ -369,7 +385,7 @@
                                         {type === 'ticker' && <th className="px-10 py-6 text-right">Var. Dia %</th>}
                                         <th className="px-10 py-6 text-right">Patrimônio</th>
                                         <th className="px-10 py-6 text-right">Lucro R$</th>
-                                        <th className="px-10 py-6 text-right">Ação</th>
+                                        <th className="px-10 py-6 text-right">Operação</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
@@ -389,7 +405,6 @@
                                                 <td className={`px-10 py-6 text-right font-black ${lucro >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{formatBRL(lucro)}</td>
                                                 <td className="px-10 py-6 text-right">
                                                     <div className="flex justify-end gap-2">
-                                                        {/* Atalho Provento */}
                                                         {(cat === 'acoes' || cat === 'realEstate') && (
                                                             <button onClick={() => lancarProvento(item.ticker)} className="bg-emerald-50 text-emerald-600 px-3 py-1 rounded-lg font-black text-[9px] uppercase tracking-widest border border-emerald-100 hover:bg-emerald-600 hover:text-white transition-all flex items-center gap-1"><LucideIcon name="Coins" size={12}/> Provento</button>
                                                         )}
@@ -430,7 +445,7 @@
                         <div className="flex items-center gap-4">
                             <img src="logo.png" alt="Logo" className="h-20 w-auto" />
                             <div className="flex flex-col">
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1">Management Elite v8.6</p>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1">Management Elite v8.7</p>
                             </div>
                         </div>
                         <nav className="flex bg-white p-2 rounded-[1.5rem] shadow-sm border border-slate-100 overflow-x-auto no-scrollbar max-w-full">
@@ -496,7 +511,7 @@
                                             ))}
                                             <div className="mt-6 pt-6 border-t border-slate-100">
                                                  <div className="flex justify-between items-center bg-emerald-50 p-4 rounded-2xl border border-emerald-100">
-                                                     <span className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">Saldo em Conta</span>
+                                                     <span className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">Saldo Disponível</span>
                                                      <span className="font-black text-emerald-800 tabular">{formatBRL(totals.saldo)}</span>
                                                  </div>
                                             </div>
@@ -569,7 +584,7 @@
                                                     saldoDisponivel: (parseValue(investments.saldoDisponivel) || 0) + valNum
                                                 }; 
                                                 setInvestments(u); save(u); 
-                                                setSyncStatus(`Recebimento de ${formatBRL(valNum)} movido para o Caixa!`);
+                                                setSyncStatus(`Recebimento de ${formatBRL(valNum)} creditado no Saldo!`);
                                                 setTimeout(() => setSyncStatus(""), 3000);
                                             } 
                                         }} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest">+ Lançar Recebimento</button>
