@@ -50,7 +50,7 @@
         <div class="flex items-center justify-center min-h-screen">
             <div class="text-center">
                 <div class="w-12 h-12 border-4 border-[#133054] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">Sincronizando IcaroInvest Elite v9.1...</p>
+                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">Sincronizando IcaroInvest Elite v9.2...</p>
             </div>
         </div>
     </div>
@@ -445,7 +445,7 @@
                         <div className="flex items-center gap-4">
                             <img src="logo.png" alt="Logo" className="h-20 w-auto" />
                             <div className="flex flex-col">
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1">Management Elite v9.1</p>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1">Management Elite v9.2</p>
                             </div>
                         </div>
                         <nav className="flex bg-white p-2 rounded-[1.5rem] shadow-sm border border-slate-100 overflow-x-auto no-scrollbar max-w-full">
@@ -534,7 +534,11 @@
                                                     <tr key={m.id} className="hover:bg-slate-50/50">
                                                         <td className="px-10 py-6 text-slate-500 font-bold">{m.data}</td>
                                                         <td className="px-10 py-6 font-black uppercase text-[#133054]">{m.ativo}</td>
-                                                        <td className="px-10 py-6"><span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${m.tipo === 'Compra' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>{m.tipo}</span></td>
+                                                        <td className="px-10 py-6">
+                                                            <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${
+                                                                m.tipo.includes('Compra') || m.tipo.includes('Entrada') ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
+                                                            }`}>{m.tipo}</span>
+                                                        </td>
                                                         <td className="px-10 py-6 text-center font-bold">{m.quantidade < 1 ? m.quantidade.toFixed(8).replace(/\.?0+$/, "") : m.quantidade.toLocaleString()}</td>
                                                         <td className="px-10 py-6 text-right font-bold text-slate-400">{formatBRL(m.valorUnitario)}</td>
                                                         <td className="px-10 py-6 text-right font-black text-[#133054]">{formatBRL(m.valorTotal)}</td>
@@ -647,14 +651,47 @@
                                             <h3 className="text-4xl font-black text-emerald-900 tabular">{formatBRL(totals.saldo)}</h3>
                                             <div className="flex gap-4 mt-4">
                                                 <button onClick={() => {
+                                                    const currentSaldo = parseValue(investments.saldoDisponivel);
                                                     const totalDiva = (investments.dividendos || []).reduce((acc, d) => acc + parseValue(d.valor), 0);
                                                     if(confirm(`Deseja sincronizar o saldo com o total de proventos (R$ ${totalDiva.toFixed(2)})? Isso substituirá o saldo atual.`)) {
-                                                        const u = {...investments, saldoDisponivel: totalDiva}; setInvestments(u); save(u);
+                                                        const diff = totalDiva - currentSaldo;
+                                                        if (Math.abs(diff) > 0.01) {
+                                                            const mov = registrarMovimentacao(null, "SALDO EM CONTA", diff > 0 ? "Ajuste (Sinc. Proventos)" : "Ajuste (Débito)", 1, Math.abs(diff));
+                                                            const u = {...investments, saldoDisponivel: totalDiva, movimentacoes: [mov, ...(investments.movimentacoes || [])]}; 
+                                                            setInvestments(u); save(u);
+                                                        } else {
+                                                            const u = {...investments, saldoDisponivel: totalDiva};
+                                                            setInvestments(u); save(u);
+                                                        }
                                                     }
                                                 }} className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-md">Sincronizar com Proventos</button>
+                                                
                                                 <button onClick={() => {
-                                                    const v = prompt("Ajustar saldo manualmente para:", investments.saldoDisponivel);
-                                                    if(v !== null) { const u = {...investments, saldoDisponivel: parseValue(v)}; setInvestments(u); save(u); }
+                                                    const currentSaldo = parseValue(investments.saldoDisponivel);
+                                                    const v = prompt("Ajustar saldo manualmente para:", currentSaldo);
+                                                    if(v !== null) { 
+                                                        const newSaldo = parseValue(v);
+                                                        const diff = newSaldo - currentSaldo;
+                                                        if (Math.abs(diff) < 0.01) return;
+
+                                                        const mov = registrarMovimentacao(
+                                                            null, 
+                                                            "SALDO EM CONTA", 
+                                                            diff > 0 ? "Ajuste (Entrada)" : "Ajuste (Saída)", 
+                                                            1, 
+                                                            Math.abs(diff)
+                                                        );
+
+                                                        const u = {
+                                                            ...investments, 
+                                                            saldoDisponivel: newSaldo,
+                                                            movimentacoes: [mov, ...(investments.movimentacoes || [])]
+                                                        }; 
+                                                        setInvestments(u); 
+                                                        save(u); 
+                                                        setSyncStatus(`Saldo ajustado e registado em Movimentações!`);
+                                                        setTimeout(() => setSyncStatus(""), 3000);
+                                                    }
                                                 }} className="text-[9px] font-black text-emerald-600 uppercase underline mt-2">Ajustar Saldo Manual</button>
                                             </div>
                                         </div>
