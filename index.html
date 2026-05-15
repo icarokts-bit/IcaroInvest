@@ -50,7 +50,7 @@
         <div class="flex items-center justify-center min-h-screen">
             <div class="text-center">
                 <div class="w-12 h-12 border-4 border-[#133054] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">Sincronizando IcaroInvest Elite v8.9...</p>
+                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">Sincronizando IcaroInvest Elite v9.0...</p>
             </div>
         </div>
     </div>
@@ -114,7 +114,7 @@
                 </div>
                 <div className="min-w-0 flex-1">
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 truncate">{title}</p>
-                    <h3 className={`text-huge font-black tabular no-break ${title.includes('Var.') ? (parseValue(value.replace(/[^0-9,-]/g, '').replace(',', '.')) >= 0 ? 'text-emerald-600' : 'text-rose-600') : 'text-slate-900'}`}>{value}</h3>
+                    <h3 className={`text-huge font-black tabular no-break ${title.includes('Var.') || title.includes('Lucro') ? (parseValue(value.replace(/[^0-9,-]/g, '').replace(',', '.')) >= 0 ? 'text-emerald-600' : 'text-rose-600') : 'text-slate-900'}`}>{value}</h3>
                     {subValue && <p className={`text-[9px] font-bold mt-1 uppercase ${subValue.startsWith('-') ? 'text-rose-500' : 'text-emerald-500'}`}>{subValue}</p>}
                 </div>
             </div>
@@ -383,7 +383,7 @@
                                         <th className="px-10 py-6 text-right">Custo</th>
                                         <th className="px-10 py-6 text-right">Atual</th>
                                         {type === 'ticker' && <th className="px-10 py-6 text-right">Var. Dia %</th>}
-                                        <th className="px-10 py-6 text-right">Patrimônio</th>
+                                        <th className="px-10 py-6 text-right">Património</th>
                                         <th className="px-10 py-6 text-right">Lucro R$</th>
                                         <th className="px-10 py-6 text-right">Ação</th>
                                     </tr>
@@ -400,15 +400,15 @@
                                                 {type === 'ticker' && <td className="px-10 py-6 text-center font-bold">{q < 1 ? q.toFixed(8).replace(/\.?0+$/, "") : q.toLocaleString()}</td>}
                                                 <td className="px-10 py-6 text-right font-bold text-slate-500">{formatBRL(pC)}</td>
                                                 <td className="px-10 py-6 text-right font-black text-[#133054]">{formatBRL(pA)}</td>
-                                                {type === 'ticker' && <td className={`px-10 py-6 text-right font-bold ${parseValue(item.variacaoDia) >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{item.variacaoDia !== undefined ? `${parseValue(item.variacaoDia).toFixed(2)}%` : '-'}</td>}
+                                                {type === 'ticker' && <td className={`px-10 py-6 text-right font-bold ${parseValue(item.variacaoDia) >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>{item.variacaoDia !== undefined ? `${parseValue(item.variacaoDia).toFixed(2)}%` : '-'}</td>}
                                                 <td className="px-10 py-6 text-right font-black text-slate-900">{formatBRL(pat)}</td>
-                                                <td className={`px-10 py-6 text-right font-black ${lucro >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{formatBRL(lucro)}</td>
+                                                <td className={`px-10 py-6 text-right font-black ${lucro >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>{formatBRL(lucro)}</td>
                                                 <td className="px-10 py-6 text-right">
                                                     <div className="flex justify-end gap-2">
                                                         {(cat === 'acoes' || cat === 'realEstate') && (
                                                             <button onClick={() => lancarProvento(item.ticker)} className="bg-emerald-50 text-emerald-600 px-3 py-1 rounded-lg font-black text-[9px] uppercase tracking-widest border border-emerald-100 hover:bg-emerald-600 hover:text-white transition-all flex items-center gap-1"><LucideIcon name="Coins" size={12}/> Provento</button>
                                                         )}
-                                                        <button onClick={() => venderAtivo(cat, id)} className="bg-rose-50 text-rose-600 px-3 py-1 rounded-lg font-black text-[9px] uppercase tracking-widest border border-rose-100 hover:bg-rose-600 hover:text-white transition-all">Vender</button>
+                                                        <button onClick={() => venderAtivo(cat, item.id)} className="bg-rose-50 text-rose-600 px-3 py-1 rounded-lg font-black text-[9px] uppercase tracking-widest border border-rose-100 hover:bg-rose-600 hover:text-white transition-all">Vender</button>
                                                         <button onClick={() => { if(confirm("Remover permanentemente?")) { const u = {...investments, [cat]: investments[cat].filter(i => i.id !== item.id)}; setInvestments(u); save(u); } }} className="text-slate-300 hover:text-rose-500"><LucideIcon name="Trash2" size={16}/></button>
                                                     </div>
                                                 </td>
@@ -445,7 +445,7 @@
                         <div className="flex items-center gap-4">
                             <img src="logo.png" alt="Logo" className="h-20 w-auto" />
                             <div className="flex flex-col">
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1">Management Elite v8.9</p>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-1">Management Elite v9.0</p>
                             </div>
                         </div>
                         <nav className="flex bg-white p-2 rounded-[1.5rem] shadow-sm border border-slate-100 overflow-x-auto no-scrollbar max-w-full">
@@ -473,16 +473,8 @@
                             <div className="space-y-10">
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-4">
                                     <StatCard isMobile={isMobile} title="Saldo em Conta" value={formatBRL(totals.saldo)} icon="Wallet" colorClass="bg-emerald-600" />
-                                    {/* NOVO CARD: VARIAÇÃO DIÁRIA */}
-                                    <StatCard 
-                                        isMobile={isMobile} 
-                                        title="Var. Dia (R$)" 
-                                        value={formatBRL(totals.varDiaTotal)} 
-                                        subValue={`${totals.varDiaTotalPct.toFixed(2)}%`}
-                                        icon="Activity" 
-                                        colorClass={totals.varDiaTotal >= 0 ? "bg-emerald-500" : "bg-rose-500"} 
-                                    />
-                                    <StatCard isMobile={isMobile} title="Patrimônio Total" value={formatBRL(totals.total)} icon="PieChart" colorClass="bg-[#133054]" />
+                                    <StatCard isMobile={isMobile} title="Var. Dia (R$)" value={formatBRL(totals.varDiaTotal)} subValue={`${totals.varDiaTotalPct.toFixed(2)}%`} icon="Activity" colorClass={totals.varDiaTotal >= 0 ? "bg-emerald-500" : "bg-rose-500"} />
+                                    <StatCard isMobile={isMobile} title="Património Total" value={formatBRL(totals.total)} icon="PieChart" colorClass="bg-[#133054]" />
                                     <StatCard isMobile={isMobile} title="Bolsa / Ações" value={formatBRL(totals.acoes.atual)} icon="BarChart3" colorClass="bg-[#bfa260]" />
                                     <StatCard isMobile={isMobile} title="Real Estate" value={formatBRL(totals.re.atual)} icon="Building2" colorClass="bg-emerald-500" />
                                     <StatCard isMobile={isMobile} title="Reserva / Investido" value={formatBRL(totals.caixa.atual - totals.saldo)} icon="PiggyBank" colorClass="bg-slate-500" />
@@ -612,15 +604,36 @@
                         ) : (
                             <div className="space-y-10">
                                 {(() => {
-                                    let s; if (activeTab === 'alternativos') { const sF = getSectionStats(investments.altFunds, 'manual'); const sS = getSectionStats(investments.altStocks, 'ticker'); const sC = getSectionStats(investments.altCrypto, 'ticker'); const inv = sF.investido + sS.investido + sC.investido; const atu = sF.atual + sS.atual + sC.atual; const luc = atu - inv; const varR$ = sS.variacaoDiaR$ + sC.variacaoDiaR$; const varPct = atu > 0 ? (varR$ / (atu - varR$)) * 100 : 0; s = { investido: inv, atual: atu, lucro: luc, lucroPct: inv > 0 ? (luc / inv) * 100 : 0, varDiaR$: varR$, varDiaPct: varPct }; } 
-                                    else { const catMap = { acoes: 'ticker', realEstate: 'ticker', caixa: 'manual' }; s = getSectionStats(investments[activeTab], catMap[activeTab]); if (activeTab === 'caixa') { const sT = getSectionStats(investments.caixaTicker, 'ticker'); s.variacaoDiaR$ = sT.variacaoDiaR$; s.varDiaPct = s.atual > 0 ? (s.variacaoDiaR$ / (s.atual - s.variacaoDiaR$)) * 100 : 0; } }
+                                    let s; 
+                                    if (activeTab === 'alternativos') { 
+                                        const sF = getSectionStats(investments.altFunds, 'manual'); 
+                                        const sS = getSectionStats(investments.altStocks, 'ticker'); 
+                                        const sC = getSectionStats(investments.altCrypto, 'ticker'); 
+                                        const inv = sF.investido + sS.investido + sC.investido; 
+                                        const atu = sF.atual + sS.atual + sC.atual; 
+                                        const luc = atu - inv; 
+                                        const varR$ = sS.variacaoDiaR$ + sC.variacaoDiaR$; 
+                                        const varPct = atu > 0 ? (varR$ / (atu - varR$)) * 100 : 0; 
+                                        s = { investido: inv, atual: atu, lucro: luc, lucroPct: inv > 0 ? (luc / inv) * 100 : 0, variacaoDiaR$: varR$, varDiaPct: varPct }; 
+                                    } else { 
+                                        const catMap = { acoes: 'ticker', realEstate: 'ticker', caixa: 'manual' }; 
+                                        s = getSectionStats(investments[activeTab], catMap[activeTab]); 
+                                        if (activeTab === 'caixa') { 
+                                            const sT = getSectionStats(investments.caixaTicker, 'ticker'); 
+                                            s.variacaoDiaR$ = sT.variacaoDiaR$; 
+                                            s.varDiaPct = s.atual > 0 ? (s.variacaoDiaR$ / (s.atual - s.variacaoDiaR$)) * 100 : 0; 
+                                        } 
+                                    }
                                     return (
-                                        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                                            <StatCard isMobile={isMobile} title="Total Investido" value={formatBRL(s.investido)} icon="PiggyBank" colorClass="bg-slate-900" />
+                                        <div className="grid grid-cols-1 md:grid-cols-7 gap-4">
+                                            {/* Cabeçalho de 7 colunas igual ao Dashboard para consistência */}
+                                            <StatCard isMobile={isMobile} title="Saldo Global" value={formatBRL(totals.saldo)} icon="Wallet" colorClass="bg-emerald-600" />
+                                            <StatCard isMobile={isMobile} title={`Var. Dia (${activeTab.toUpperCase()})`} value={formatBRL(s.variacaoDiaR$ || 0)} subValue={`${(s.varDiaPct || 0).toFixed(2)}%`} icon="Activity" colorClass={(s.variacaoDiaR$ || 0) >= 0 ? "bg-emerald-500" : "bg-rose-500"} />
+                                            <StatCard isMobile={isMobile} title={`Património ${activeTab.toUpperCase()}`} value={formatBRL(s.atual)} icon="PieChart" colorClass="bg-[#133054]" />
                                             <StatCard isMobile={isMobile} title="Lucro Bruto" value={formatBRL(s.lucro)} subValue={`${s.lucroPct.toFixed(2)}%`} icon="TrendingUp" colorClass={s.lucro >= 0 ? "bg-emerald-500" : "bg-rose-500"} />
-                                            <StatCard isMobile={isMobile} title="Var. Dia (R$)" value={formatBRL(s.varDiaR$ || 0)} icon="Activity" colorClass={(s.varDiaR$ || 0) >= 0 ? "bg-emerald-400" : "bg-rose-400"} />
-                                            <StatCard isMobile={isMobile} title="Var. Dia (%)" value={`${(s.varDiaPct || 0).toFixed(2)}%`} icon="Percent" colorClass={(s.varDiaPct || 0) >= 0 ? "bg-emerald-400" : "bg-rose-400"} />
-                                            <StatCard isMobile={isMobile} title="Patrimônio" value={formatBRL(s.atual)} icon="Wallet" colorClass="bg-[#133054]" />
+                                            <StatCard isMobile={isMobile} title="Investido" value={formatBRL(s.investido)} icon="PiggyBank" colorClass="bg-slate-900" />
+                                            <StatCard isMobile={isMobile} title="Var. Dia Total" value={formatBRL(totals.varDiaTotal)} subValue={`${totals.varDiaTotalPct.toFixed(2)}%`} icon="Globe" colorClass={totals.varDiaTotal >= 0 ? "bg-slate-600" : "bg-rose-900"} />
+                                            <StatCard isMobile={isMobile} title="Total Geral" value={formatBRL(totals.total)} icon="Layers" colorClass="bg-slate-500" />
                                         </div>
                                     );
                                 })()}
