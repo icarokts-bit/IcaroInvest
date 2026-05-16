@@ -54,7 +54,7 @@
         <div class="flex items-center justify-center min-h-screen">
             <div class="text-center">
                 <div class="w-12 h-12 border-4 border-[#133054] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">Sincronizando IcaroInvest Elite v11.1...</p>
+                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">Sincronizando IcaroInvest Elite v11.2...</p>
             </div>
         </div>
     </div>
@@ -142,6 +142,9 @@
             const [marketTopGainers, setMarketTopGainers] = useState([]);
             const [marketTopLosers, setMarketTopLosers] = useState([]);
             const [marketSort, setMarketSort] = useState({ key: 'patrimonio', dir: 'desc' });
+            
+            // Estado de ordenação para as seções individuais
+            const [sectionSort, setSectionSort] = useState({ key: 'patrimonio', dir: 'desc' });
 
             useEffect(() => {
                 const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -280,6 +283,7 @@
             }, [investments, marketSort]);
 
             const handleMarketSort = (key) => setMarketSort(prev => ({ key, dir: prev.key === key && prev.dir === 'desc' ? 'asc' : 'desc' }));
+            const handleSectionSort = (key) => setSectionSort(prev => ({ key, dir: prev.key === key && prev.dir === 'desc' ? 'asc' : 'desc' }));
 
             const syncGlobalPortfolio = async () => {
                 const categories = ['acoes', 'realEstate', 'caixaTicker', 'altStocks', 'altCrypto'];
@@ -372,7 +376,42 @@
             };
 
             const renderTableSection = (cat, title, type = 'ticker') => {
-                const data = (investments[cat] || []);
+                const rawData = (investments[cat] || []);
+                
+                // Preparar dados para ordenação
+                const processedData = rawData.map(item => {
+                    const q = type === 'ticker' ? parseValue(item.quantidade) : 1;
+                    const pA = type === 'ticker' ? parseValue(item.precoAtual) : parseValue(item.valorAtual);
+                    const pC = type === 'ticker' ? parseValue(item.precoMedio) : parseValue(item.valorAplicado);
+                    const varPct = type === 'ticker' ? parseValue(item.variacaoDia) : 0;
+                    const pat = q * pA;
+                    let varR = 0;
+                    if (type === 'ticker' && varPct !== 0) {
+                        const prevP = pA / (1 + (varPct / 100));
+                        varR = (pA - prevP) * q;
+                    }
+                    return { 
+                        ...item, 
+                        _ativo: type === 'ticker' ? item.ticker : item.nome,
+                        _qtd: q,
+                        _custo: pC,
+                        _atual: pA,
+                        _varPct: varPct,
+                        _varR: varR,
+                        _patrimonio: pat
+                    };
+                });
+
+                // Aplicar ordenação
+                const sortedData = [...processedData].sort((a, b) => {
+                    const valA = a[sectionSort.key] ?? 0;
+                    const valB = b[sectionSort.key] ?? 0;
+                    if (typeof valA === 'string') {
+                        return sectionSort.dir === 'desc' ? valB.localeCompare(valA) : valA.localeCompare(valB);
+                    }
+                    return sectionSort.dir === 'desc' ? valB - valA : valA - valB;
+                });
+
                 return (
                     <div className="bg-white rounded-[2rem] overflow-hidden shadow-sm border border-slate-100 animate-in mb-10">
                         <div className="p-8 bg-slate-50/30 border-b flex justify-between items-center flex-wrap gap-4">
@@ -397,64 +436,50 @@
                         </div>
                         <div className="overflow-x-auto custom-scroll">
                             <table className="w-full text-left">
-                                <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest cursor-pointer select-none">
                                     <tr>
-                                        <th className="px-10 py-6">Ativo</th>
-                                        {type === 'ticker' && <th className="px-10 py-6 text-center">Qtd</th>}
-                                        <th className="px-10 py-6 text-right">Custo</th>
-                                        <th className="px-10 py-6 text-right">Atual</th>
-                                        {type === 'ticker' && <th className="px-10 py-6 text-right">Var. Dia %</th>}
-                                        <th className="px-10 py-6 text-right">Var. Dia R$</th>
-                                        <th className="px-10 py-6 text-right">Património</th>
+                                        <th className="px-10 py-6" onClick={() => handleSectionSort('_ativo')}>Ativo <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
+                                        {type === 'ticker' && <th className="px-10 py-6 text-center" onClick={() => handleSectionSort('_qtd')}>Qtd <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>}
+                                        <th className="px-10 py-6 text-right" onClick={() => handleSectionSort('_custo')}>Custo <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
+                                        <th className="px-10 py-6 text-right" onClick={() => handleSectionSort('_atual')}>Atual <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
+                                        {type === 'ticker' && <th className="px-10 py-6 text-right" onClick={() => handleSectionSort('_varPct')}>Var. Dia % <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>}
+                                        <th className="px-10 py-6 text-right" onClick={() => handleSectionSort('_varR')}>Var. Dia R$ <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
+                                        <th className="px-10 py-6 text-right" onClick={() => handleSectionSort('_patrimonio')}>Património <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
                                         <th className="px-10 py-6 text-right min-w-[250px]">Gestão</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 tabular text-sm">
-                                    {data.map(item => {
-                                        const q = type === 'ticker' ? parseValue(item.quantidade) : 1;
-                                        const pA = type === 'ticker' ? parseValue(item.precoAtual) : parseValue(item.valorAtual);
-                                        const pC = type === 'ticker' ? parseValue(item.precoMedio) : parseValue(item.valorAplicado);
-                                        const varPct = type === 'ticker' ? parseValue(item.variacaoDia) : 0;
-                                        const pat = q * pA;
-                                        
-                                        let varR = 0;
-                                        if (type === 'ticker' && varPct !== 0) {
-                                            const prevP = pA / (1 + (varPct / 100));
-                                            varR = (pA - prevP) * q;
-                                        }
-
-                                        return (
-                                            <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
-                                                <td className="px-10 py-6 font-black text-slate-900 uppercase">{type === 'ticker' ? item.ticker : item.nome}</td>
-                                                {type === 'ticker' && <td className="px-10 py-6 text-center font-bold">{q.toLocaleString()}</td>}
-                                                <td className="px-10 py-6 text-right font-bold text-slate-400">{formatBRL(pC)}</td>
-                                                <td className="px-10 py-6 text-right font-black text-[#133054]">{formatBRL(pA)}</td>
-                                                {type === 'ticker' && <td className={`px-10 py-6 text-right font-bold ${varPct >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>{varPct.toFixed(2)}%</td>}
-                                                <td className={`px-10 py-6 text-right font-bold ${varR >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-                                                    {type === 'ticker' ? formatBRL(varR) : '-'}
-                                                </td>
-                                                <td className="px-10 py-6 text-right font-black text-slate-900">{formatBRL(pat)}</td>
-                                                <td className="px-10 py-6 text-right">
-                                                    <div className="flex justify-end items-center gap-2">
-                                                        {(cat === 'acoes' || cat === 'realEstate' || cat === 'caixaTicker') && (
-                                                            <button onClick={() => lancarProvento(item.ticker)} className="bg-emerald-50 text-emerald-600 px-3 py-2 rounded-xl border border-emerald-100 hover:bg-emerald-600 hover:text-white transition-all flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
-                                                                <LucideIcon name="Coins" size={12}/> Provento
-                                                            </button>
-                                                        )}
-                                                        <button onClick={() => handleTrade(cat, item, type, 'BUY')} className="bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white px-3 py-2 rounded-xl transition-all shadow-sm border border-emerald-100 flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
-                                                            <LucideIcon name="PlusCircle" size={12}/> Compra
+                                    {sortedData.map(item => (
+                                        <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
+                                            <td className="px-10 py-6 font-black text-slate-900 uppercase">{item._ativo}</td>
+                                            {type === 'ticker' && <td className="px-10 py-6 text-center font-bold">{item._qtd.toLocaleString()}</td>}
+                                            <td className="px-10 py-6 text-right font-bold text-slate-400">{formatBRL(item._custo)}</td>
+                                            <td className="px-10 py-6 text-right font-black text-[#133054]">{formatBRL(item._atual)}</td>
+                                            {type === 'ticker' && <td className={`px-10 py-6 text-right font-bold ${item._varPct >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>{item._varPct.toFixed(2)}%</td>}
+                                            <td className={`px-10 py-6 text-right font-bold ${item._varR >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                                                {type === 'ticker' ? formatBRL(item._varR) : '-'}
+                                            </td>
+                                            <td className="px-10 py-6 text-right font-black text-slate-900">{formatBRL(item._patrimonio)}</td>
+                                            <td className="px-10 py-6 text-right">
+                                                <div className="flex justify-end items-center gap-2">
+                                                    {(cat === 'acoes' || cat === 'realEstate' || cat === 'caixaTicker') && (
+                                                        <button onClick={() => lancarProvento(item.ticker)} className="bg-emerald-50 text-emerald-600 px-3 py-2 rounded-xl border border-emerald-100 hover:bg-emerald-600 hover:text-white transition-all flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
+                                                            <LucideIcon name="Coins" size={12}/> Provento
                                                         </button>
-                                                        <button onClick={() => handleTrade(cat, item, type, 'SELL')} className="bg-orange-50 text-orange-600 hover:bg-orange-600 hover:text-white px-3 py-2 rounded-xl transition-all shadow-sm border border-orange-100 flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
-                                                            <LucideIcon name="MinusCircle" size={12}/> Venda
-                                                        </button>
-                                                        <button onClick={() => { if(confirm(`Eliminar definitivamente?`)) { const next = {...investments, [cat]: investments[cat].filter(i => i.id !== item.id)}; setInvestments(next); save(next); } }} className="bg-rose-50 text-rose-500 hover:bg-rose-600 hover:text-white px-3 py-2 rounded-xl transition-all shadow-sm border border-rose-100 flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
-                                                            <LucideIcon name="Trash2" size={12}/> Eliminar
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
+                                                    )}
+                                                    <button onClick={() => handleTrade(cat, item, type, 'BUY')} className="bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white px-3 py-2 rounded-xl transition-all shadow-sm border border-emerald-100 flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
+                                                        <LucideIcon name="PlusCircle" size={12}/> Compra
+                                                    </button>
+                                                    <button onClick={() => handleTrade(cat, item, type, 'SELL')} className="bg-orange-50 text-orange-600 hover:bg-orange-600 hover:text-white px-3 py-2 rounded-xl transition-all shadow-sm border border-orange-100 flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
+                                                        <LucideIcon name="MinusCircle" size={12}/> Venda
+                                                    </button>
+                                                    <button onClick={() => { if(confirm(`Eliminar definitivamente?`)) { const next = {...investments, [cat]: investments[cat].filter(i => i.id !== item.id)}; setInvestments(next); save(next); } }} className="bg-rose-50 text-rose-500 hover:bg-rose-600 hover:text-white px-3 py-2 rounded-xl transition-all shadow-sm border border-rose-100 flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
+                                                        <LucideIcon name="Trash2" size={12}/> Eliminar
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
                                 </tbody>
                             </table>
                         </div>
@@ -503,14 +528,16 @@
                                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
                                     <div className="lg:col-span-2 bg-white rounded-[2.5rem] p-10 min-h-[500px] flex flex-col shadow-sm border border-slate-100">
                                         <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-10 text-center">Alocação Total</h2>
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <PieChart>
-                                                <Pie data={[{ name: 'Ações', value: totals.acoes.atual }, { name: 'RE', value: totals.re.atual }, { name: 'Caixa', value: totals.caixa.atual }, { name: 'Alt', value: totals.alt.atual }].filter(d => d.value > 0)} innerRadius={80} outerRadius={140} paddingAngle={8} dataKey="value" stroke="none" cornerRadius={12}>
-                                                    {COLORS.map((c, i) => <Cell key={i} fill={c} />)}
-                                                </Pie>
-                                                <Tooltip contentStyle={{ borderRadius: '1.5rem', border: 'none', boxShadow: '0 10px 20px rgba(0,0,0,0.05)', fontBold: '900' }} formatter={(v) => formatBRL(v)} />
-                                            </PieChart>
-                                        </ResponsiveContainer>
+                                        <div className="flex-1 w-full h-full">
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <PieChart>
+                                                    <Pie data={[{ name: 'Ações', value: totals.acoes.atual }, { name: 'RE', value: totals.re.atual }, { name: 'Caixa', value: totals.caixa.atual }, { name: 'Alt', value: totals.alt.atual }].filter(d => d.value > 0)} innerRadius={80} outerRadius={140} paddingAngle={8} dataKey="value" stroke="none" cornerRadius={12}>
+                                                        {COLORS.map((c, i) => <Cell key={i} fill={c} />)}
+                                                    </Pie>
+                                                    <Tooltip contentStyle={{ borderRadius: '1.5rem', border: 'none', boxShadow: '0 10px 20px rgba(0,0,0,0.05)', fontBold: '900' }} formatter={(v) => formatBRL(v)} />
+                                                </PieChart>
+                                            </ResponsiveContainer>
+                                        </div>
                                     </div>
                                     <div className="bg-white rounded-[2.5rem] p-10 shadow-sm border border-slate-100">
                                         <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-8">Composição</h2>
@@ -540,13 +567,13 @@
                                         <table className="w-full text-left">
                                             <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest cursor-pointer select-none">
                                                 <tr>
-                                                    <th className="px-10 py-6" onClick={() => handleMarketSort('ativo')}>Ativos <LucideIcon name="ChevronDown" size={10} className="inline"/></th>
-                                                    <th className="px-10 py-6 text-center" onClick={() => handleMarketSort('qtd')}>QTY <LucideIcon name="ChevronDown" size={10} className="inline"/></th>
-                                                    <th className="px-10 py-6 text-right" onClick={() => handleMarketSort('custo')}>CUSTO <LucideIcon name="ChevronDown" size={10} className="inline"/></th>
-                                                    <th className="px-10 py-6 text-right" onClick={() => handleMarketSort('atual')}>ATUAL <LucideIcon name="ChevronDown" size={10} className="inline"/></th>
-                                                    <th className="px-10 py-6 text-right" onClick={() => handleMarketSort('varDia')}>VAR DIA % <LucideIcon name="ChevronDown" size={10} className="inline"/></th>
-                                                    <th className="px-10 py-6 text-right" onClick={() => handleMarketSort('varDiaR$')}>VAR DIA R$ <LucideIcon name="ChevronDown" size={10} className="inline"/></th>
-                                                    <th className="px-10 py-6 text-right" onClick={() => handleMarketSort('patrimonio')}>PATRIMONIO <LucideIcon name="ChevronDown" size={10} className="inline"/></th>
+                                                    <th className="px-10 py-6" onClick={() => handleMarketSort('ativo')}>Ativos <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
+                                                    <th className="px-10 py-6 text-center" onClick={() => handleMarketSort('qtd')}>QTY <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
+                                                    <th className="px-10 py-6 text-right" onClick={() => handleMarketSort('custo')}>CUSTO <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
+                                                    <th className="px-10 py-6 text-right" onClick={() => handleMarketSort('atual')}>ATUAL <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
+                                                    <th className="px-10 py-6 text-right" onClick={() => handleMarketSort('varDia')}>VAR DIA % <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
+                                                    <th className="px-10 py-6 text-right" onClick={() => handleMarketSort('varDiaR$')}>VAR DIA R$ <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
+                                                    <th className="px-10 py-6 text-right" onClick={() => handleMarketSort('patrimonio')}>PATRIMONIO <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100 tabular text-sm">
@@ -674,7 +701,7 @@
                         {activeTab === 'caixa' && ( <> {renderTableSection('caixa', 'Reserva Manual', 'manual')} {renderTableSection('caixaTicker', 'Reserva Cotada', 'ticker')} </> )}
                         {activeTab === 'alternativos' && ( <> {renderTableSection('altFunds', 'Fundos Alternativos', 'manual')} {renderTableSection('altStocks', 'Stocks Alternativos', 'ticker')} {renderTableSection('altCrypto', 'Crypto Assets', 'ticker')} </> )}
                     </main>
-                    <footer className="mt-20 py-10 text-center border-t border-slate-100 text-[10px] font-black text-slate-300 uppercase tracking-[0.5em]">IcaroInvest Elite Management v11.1</footer>
+                    <footer className="mt-20 py-10 text-center border-t border-slate-100 text-[10px] font-black text-slate-300 uppercase tracking-[0.5em]">IcaroInvest Elite Management v11.2</footer>
                 </div>
             );
         };
