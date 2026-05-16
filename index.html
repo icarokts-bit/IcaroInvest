@@ -32,7 +32,12 @@
         }
         .tabular { font-variant-numeric: tabular-nums; }
         .no-break { white-space: nowrap; }
-        .text-huge { font-size: clamp(1rem, 3.5vw, 1.4rem); line-height: 1.1; }
+        /* Ajuste de fonte para evitar quebra de layout em valores grandes */
+        .text-huge { 
+            font-size: clamp(0.9rem, 1.8vw, 1.2rem); 
+            line-height: 1.2; 
+            word-break: break-word;
+        }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .animate-in { animation: fadeIn 0.4s ease-out forwards; }
@@ -54,7 +59,7 @@
         <div class="flex items-center justify-center min-h-screen">
             <div class="text-center">
                 <div class="w-12 h-12 border-4 border-[#133054] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">Sincronizando IcaroInvest Elite v11.3...</p>
+                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">Sincronizando IcaroInvest Elite v11.4...</p>
             </div>
         </div>
     </div>
@@ -115,14 +120,14 @@
         };
 
         const StatCard = ({ title, value, icon, colorClass, isMobile, subValue = null }) => (
-            <div className={`glass p-5 rounded-premium flex ${isMobile ? 'flex-col items-start gap-2' : 'items-center gap-4'} min-w-0 shadow-sm hover:shadow-md transition-all flex-1`}>
+            <div className={`glass p-4 rounded-premium flex ${isMobile ? 'flex-col items-start gap-2' : 'items-center gap-3'} min-w-0 shadow-sm hover:shadow-md transition-all flex-1`}>
                 <div className={`${colorClass} p-3 rounded-2xl text-white shadow-lg flex-shrink-0`}>
-                    <LucideIcon name={icon} size={24} />
+                    <LucideIcon name={icon} size={20} />
                 </div>
-                <div className="min-w-0 flex-1 w-full">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 truncate">{title}</p>
-                    <h3 className={`text-huge font-black tabular no-break ${title.includes('Var.') || title.includes('Lucro') ? (parseValue(value.toString().replace(/[^0-9,-]/g, '').replace(',', '.')) >= 0 ? 'text-emerald-600' : 'text-rose-600') : 'text-slate-900'}`}>{value}</h3>
-                    {subValue && <p className={`text-[9px] font-bold mt-1 uppercase ${subValue.toString().startsWith('-') ? 'text-rose-500' : 'text-emerald-500'}`}>{subValue}</p>}
+                <div className="min-w-0 flex-1 w-full overflow-hidden">
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1 truncate">{title}</p>
+                    <h3 className={`text-huge font-black tabular ${title.includes('Var.') || title.includes('Lucro') ? (parseValue(value.toString().replace(/[^0-9,-]/g, '').replace(',', '.')) >= 0 ? 'text-emerald-600' : 'text-rose-600') : 'text-slate-900'}`}>{value}</h3>
+                    {subValue && <p className={`text-[8px] font-black mt-0.5 uppercase truncate ${subValue.toString().startsWith('-') ? 'text-rose-500' : 'text-emerald-500'}`}>{subValue}</p>}
                 </div>
             </div>
         );
@@ -543,7 +548,7 @@
                     <main className="space-y-10 animate-in">
                         {activeTab === 'dashboard' && (
                             <div className="space-y-10">
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+                                <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
                                     <StatCard isMobile={isMobile} title="Saldo Livre" value={formatBRL(totals.saldo)} icon="Wallet" colorClass="bg-emerald-600" />
                                     <StatCard isMobile={isMobile} title="Património" value={formatBRL(totals.total)} icon="PieChart" colorClass="bg-[#133054]" />
                                     <StatCard isMobile={isMobile} title="Ações" value={formatBRL(totals.acoes.atual)} icon="BarChart3" colorClass="bg-[#bfa260]" />
@@ -571,7 +576,7 @@
                                             {[ { label: 'Ações', v: totals.acoes, color: COLORS[0] }, { label: 'RE', v: totals.re, color: COLORS[1] }, { label: 'Caixa', v: totals.caixa, color: COLORS[2] }, { label: 'Alt', v: totals.alt, color: COLORS[4] } ].map(item => (
                                                 <div key={item.label} className="p-5 bg-slate-50/50 rounded-3xl border border-slate-100 flex justify-between items-center">
                                                     <div className="flex items-center gap-3"><div className="w-3 h-3 rounded-full" style={{ background: item.color }}></div><span className="font-bold text-slate-700 text-xs uppercase">{item.label}</span></div>
-                                                    <span className="font-black text-slate-900">{formatBRL(item.v.atual)}</span>
+                                                    <span className="font-black text-slate-900 tabular">{formatBRL(item.v.atual)}</span>
                                                 </div>
                                             ))}
                                         </div>
@@ -727,7 +732,7 @@
                         {activeTab === 'caixa' && ( <> {renderTableSection('caixa', 'Reserva Manual', 'manual')} {renderTableSection('caixaTicker', 'Reserva Cotada', 'ticker')} </> )}
                         {activeTab === 'alternativos' && ( <> {renderTableSection('altFunds', 'Fundos Alternativos', 'manual')} {renderTableSection('altStocks', 'Stocks Alternativos', 'ticker')} {renderTableSection('altCrypto', 'Crypto Assets', 'ticker')} </> )}
                     </main>
-                    <footer className="mt-20 py-10 text-center border-t border-slate-100 text-[10px] font-black text-slate-300 uppercase tracking-[0.5em]">IcaroInvest Elite Management v11.3</footer>
+                    <footer className="mt-20 py-10 text-center border-t border-slate-100 text-[10px] font-black text-slate-300 uppercase tracking-[0.5em]">IcaroInvest Elite Management v11.4</footer>
                 </div>
             );
         };
