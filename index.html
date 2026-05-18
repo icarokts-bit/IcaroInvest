@@ -53,7 +53,7 @@
         <div class="flex items-center justify-center min-h-screen">
             <div class="text-center">
                 <div class="w-12 h-12 border-4 border-[#133054] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">Sincronizando IcaroInvest Elite v11.10...</p>
+                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">Sincronizando IcaroInvest Elite v11.11...</p>
             </div>
         </div>
     </div>
@@ -597,6 +597,10 @@
                     const pC = type === 'ticker' ? parseValue(item.precoMedio) : parseValue(item.valorAplicado);
                     const varPct = type === 'ticker' ? parseValue(item.variacaoDia) : 0;
                     const pat = q * pA;
+                    const custoTotal = type === 'ticker' ? (q * pC) : pC;
+                    const lucroR$ = pat - custoTotal;
+                    const lucroPct = custoTotal > 0 ? (lucroR$ / custoTotal) * 100 : 0;
+                    
                     let varR = 0;
                     if (type === 'ticker' && varPct !== 0) {
                         const prevP = pA / (1 + (varPct / 100));
@@ -606,11 +610,14 @@
                         ...item, 
                         _ativo: type === 'ticker' ? item.ticker : item.nome,
                         _qtd: q,
-                        _custo: pC,
+                        _custo: pC, // custo unitário / valor aplicado individual
+                        _custoTotal: custoTotal,
                         _atual: pA,
                         _varPct: varPct,
                         _varR: varR,
-                        _patrimonio: pat
+                        _patrimonio: pat,
+                        _lucroR$: lucroR$,
+                        _lucroPct: lucroPct
                     };
                 });
 
@@ -650,29 +657,36 @@
                             <table className="w-full text-left">
                                 <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest cursor-pointer select-none">
                                     <tr>
-                                        <th className="px-10 py-6" onClick={() => handleSectionSort('_ativo')}>Ativo <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
-                                        {type === 'ticker' && <th className="px-10 py-6 text-center" onClick={() => handleSectionSort('_qtd')}>Qtd <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>}
-                                        <th className="px-10 py-6 text-right" onClick={() => handleSectionSort('_custo')}>Custo <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
-                                        <th className="px-10 py-6 text-right" onClick={() => handleSectionSort('_atual')}>Atual <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
-                                        {type === 'ticker' && <th className="px-10 py-6 text-right" onClick={() => handleSectionSort('_varPct')}>Var. Dia % <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>}
-                                        <th className="px-10 py-6 text-right" onClick={() => handleSectionSort('_varR')}>Var. Dia R$ <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
-                                        <th className="px-10 py-6 text-right" onClick={() => handleSectionSort('_patrimonio')}>Património <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
-                                        <th className="px-10 py-6 text-right min-w-[340px]">Gestão</th>
+                                        <th className="px-6 py-6" onClick={() => handleSectionSort('_ativo')}>Ativo <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
+                                        {type === 'ticker' && <th className="px-6 py-6 text-center" onClick={() => handleSectionSort('_qtd')}>Qtd <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>}
+                                        <th className="px-6 py-6 text-right" onClick={() => handleSectionSort('_custo')}>{type === 'ticker' ? 'Custo Unit.' : 'Aplicado'} <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
+                                        <th className="px-6 py-6 text-right" onClick={() => handleSectionSort('_atual')}>{type === 'ticker' ? 'Atual' : 'Valor Atual'} <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
+                                        {type === 'ticker' && <th className="px-6 py-6 text-right" onClick={() => handleSectionSort('_varPct')}>Var. Dia % <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>}
+                                        <th className="px-6 py-6 text-right" onClick={() => handleSectionSort('_varR')}>Var. Dia R$ <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
+                                        <th className="px-6 py-6 text-right" onClick={() => handleSectionSort('_lucroR$')}>Lucro / Prejuízo <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
+                                        <th className="px-6 py-6 text-right" onClick={() => handleSectionSort('_patrimonio')}>Património <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
+                                        <th className="px-6 py-6 text-right min-w-[340px]">Gestão</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 tabular text-sm">
                                     {sortedData.map(item => (
                                         <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
-                                            <td className="px-10 py-6 font-black text-slate-900 uppercase">{item._ativo}</td>
-                                            {type === 'ticker' && <td className="px-10 py-6 text-center font-bold">{item._qtd.toLocaleString(undefined, { maximumFractionDigits: 8 })}</td>}
-                                            <td className="px-10 py-6 text-right font-bold text-slate-400">{formatBRL(item._custo)}</td>
-                                            <td className="px-10 py-6 text-right font-black text-[#133054]">{formatBRL(item._atual)}</td>
-                                            {type === 'ticker' && <td className={`px-10 py-6 text-right font-bold ${item._varPct >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>{item._varPct.toFixed(2)}%</td>}
-                                            <td className={`px-10 py-6 text-right font-bold ${item._varR >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                                            <td className="px-6 py-6 font-black text-slate-900 uppercase">{item._ativo}</td>
+                                            {type === 'ticker' && <td className="px-6 py-6 text-center font-bold">{item._qtd.toLocaleString(undefined, { maximumFractionDigits: 8 })}</td>}
+                                            <td className="px-6 py-6 text-right font-bold text-slate-400">{formatBRL(item._custo)}</td>
+                                            <td className="px-6 py-6 text-right font-black text-[#133054]">{formatBRL(item._atual)}</td>
+                                            {type === 'ticker' && <td className={`px-6 py-6 text-right font-bold ${item._varPct >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>{item._varPct.toFixed(2)}%</td>}
+                                            <td className={`px-6 py-6 text-right font-bold ${item._varR >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
                                                 {type === 'ticker' ? formatBRL(item._varR) : '-'}
                                             </td>
-                                            <td className="px-10 py-6 text-right font-black text-slate-900">{formatBRL(item._patrimonio)}</td>
-                                            <td className="px-10 py-6 text-right">
+                                            <td className={`px-6 py-6 text-right font-black ${item._lucroR$ >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                                                <div className="flex flex-col items-end">
+                                                    <span>{item._lucroR$ >= 0 ? '+' : ''}{formatBRL(item._lucroR$)}</span>
+                                                    <span className="text-[10px] font-bold opacity-80">({item._lucroPct >= 0 ? '+' : ''}{item._lucroPct.toFixed(2)}%)</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-6 text-right font-black text-slate-900">{formatBRL(item._patrimonio)}</td>
+                                            <td className="px-6 py-6 text-right">
                                                 <div className="flex justify-end items-center gap-2">
                                                     <button onClick={() => handleOpenEditModal(cat, item, type)} className="bg-slate-50 text-slate-700 hover:bg-[#133054] hover:text-white px-3 py-2 rounded-xl transition-all shadow-sm border border-slate-200 flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
                                                         <LucideIcon name="Edit3" size={12}/> Editar
@@ -1056,7 +1070,7 @@
                         </div>
                     )}
 
-                    <footer className="mt-20 py-10 text-center border-t border-slate-100 text-[10px] font-black text-slate-300 uppercase tracking-[0.5em]">IcaroInvest Elite Management v11.10</footer>
+                    <footer className="mt-20 py-10 text-center border-t border-slate-100 text-[10px] font-black text-slate-300 uppercase tracking-[0.5em]">IcaroInvest Elite Management v11.11</footer>
                 </div>
             );
         };
