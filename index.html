@@ -245,6 +245,16 @@
                 saldoDisponivel: 0
             });
             const [syncStatus, setSyncStatus] = useState("");
+            
+            const [saldoModal, setSaldoModal] = useState({
+                isOpen: false,
+                type: 'WITHDRAW', // 'DEPOSIT' ou 'WITHDRAW'
+                valor: '',
+                data: new Date().toLocaleDateString('pt-BR'),
+                descricao: ''
+            });
+            const [modalError, setModalError] = useState("");
+
             const [globalSyncing, setGlobalSyncing] = useState(false);
             const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
             
@@ -560,6 +570,41 @@
                 setEditModal(prev => ({ ...prev, isOpen: false }));
             };
 
+            const handleSaldoTransaction = () => {
+                const val = parseValue(saldoModal.valor);
+                if (isNaN(val) || val <= 0) {
+                    setModalError("Por favor, insira um valor válido.");
+                    return;
+                }
+                let next = { ...investments };
+                const currentSaldo = parseValue(next.saldoDisponivel);
+
+                if (saldoModal.type === 'WITHDRAW') {
+                    if (val > currentSaldo) {
+                        setModalError("Saldo livre insuficiente para este saque.");
+                        return;
+                    }
+                    next.saldoDisponivel = currentSaldo - val;
+                    next.movimentacoes = [
+                        registrarMovimentacao(saldoModal.data, 'SALDO', 'Saque', 1, val),
+                        ...(next.movimentacoes || [])
+                    ];
+                } else {
+                    next.saldoDisponivel = currentSaldo + val;
+                    next.movimentacoes = [
+                        registrarMovimentacao(saldoModal.data, 'SALDO', 'Depósito', 1, val),
+                        ...(next.movimentacoes || [])
+                    ];
+                }
+
+                setInvestments(next);
+                save(next);
+                setSaldoModal(prev => ({ ...prev, isOpen: false }));
+                setModalError("");
+                setSyncStatus(saldoModal.type === 'WITHDRAW' ? "Saque realizado com sucesso!" : "Depósito realizado com sucesso!");
+                setTimeout(() => setSyncStatus(""), 3000);
+            };
+
             const lancarProvento = (ativo) => {
                 const valor = parseValue(prompt(`Valor do provento de ${ativo}:`));
                 if (isNaN(valor) || valor <= 0) return;
@@ -748,7 +793,34 @@
                             <div className="space-y-10 animate-fade">
                                 {/* Linha de Ativos Clássica com Variação de Dia Integrada em R$ e % */}
                                 <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-                                    <StatCard isMobile={isMobile} title="Saldo Livre" value={formatBRL(totals.saldo)} icon="Wallet" colorClass="bg-emerald-600" />
+                                    {}
+                                    <div className="glass p-3 sm:p-4 rounded-premium flex flex-col justify-between min-w-0 shadow-sm hover:shadow-md transition-all flex-1 border border-slate-100">
+                                        <div className="flex items-center gap-2 sm:gap-3">
+                                            <div className="bg-emerald-600 p-2 sm:p-3 rounded-xl sm:rounded-2xl text-white shadow-md flex-shrink-0">
+                                                <LucideIcon name="Wallet" size={16} className="sm:w-5 sm:h-5" />
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-[8px] sm:text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5 truncate">Saldo Livre</p>
+                                                <h3 className="text-xs sm:text-sm md:text-base lg:text-lg font-black tabular truncate text-slate-900">
+                                                    {formatBRL(totals.saldo)}
+                                                </h3>
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-1 mt-2.5 pt-2 border-t border-slate-100/60">
+                                            <button 
+                                                onClick={() => setSaldoModal({ isOpen: true, type: 'DEPOSIT', valor: '', data: new Date().toLocaleDateString('pt-BR'), descricao: 'Aporte' })}
+                                                className="flex-1 py-1 text-center bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white rounded-lg text-[8px] font-black uppercase tracking-wider transition-all"
+                                            >
+                                                + Depósito
+                                            </button>
+                                            <button 
+                                                onClick={() => setSaldoModal({ isOpen: true, type: 'WITHDRAW', valor: '', data: new Date().toLocaleDateString('pt-BR'), descricao: 'Saque' })}
+                                                className="flex-1 py-1 text-center bg-rose-50 text-rose-700 hover:bg-rose-600 hover:text-white rounded-lg text-[8px] font-black uppercase tracking-wider transition-all"
+                                            >
+                                                - Saque
+                                            </button>
+                                        </div>
+                                    </div>
                                     <StatCard isMobile={isMobile} title="Património" value={formatBRL(totals.total)} icon="PieChart" colorClass="bg-[#133054]" subValue={`${totals.varDiaTotal >= 0 ? '+' : ''}${formatBRL(totals.varDiaTotal)} (${totals.varDiaTotalPct >= 0 ? '+' : ''}${totals.varDiaTotalPct.toFixed(2)}%)`} />
                                     <StatCard isMobile={isMobile} title="Ações" value={formatBRL(totals.acoes.atual)} icon="BarChart3" colorClass="bg-[#bfa260]" subValue={`${totals.acoes.variacaoDiaR$ >= 0 ? '+' : ''}${formatBRL(totals.acoes.variacaoDiaR$)} (${totals.acoes.varDiaPct >= 0 ? '+' : ''}${totals.acoes.varDiaPct.toFixed(2)}%)`} />
                                     <StatCard isMobile={isMobile} title="RE" value={formatBRL(totals.re.atual)} icon="Building2" colorClass="bg-emerald-500" subValue={`${totals.re.variacaoDiaR$ >= 0 ? '+' : ''}${formatBRL(totals.re.variacaoDiaR$)} (${totals.re.varDiaPct >= 0 ? '+' : ''}${totals.re.varDiaPct.toFixed(2)}%)`} />
@@ -954,6 +1026,33 @@
                         {activeTab === 'caixa' && (
                             <>
                                 <TabSummaryHeader stats={totals.caixa} label="Caixa" />
+                                {}
+                                <div className="bg-white rounded-[2rem] p-6 sm:p-8 shadow-sm border border-slate-100 animate-in mb-8">
+                                    <div className="flex justify-between items-center flex-wrap gap-4 mb-6">
+                                        <div>
+                                            <h2 className="font-black text-[#133054] uppercase tracking-tighter text-xl sm:text-2xl">Gestão de Saldo Livre</h2>
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Adicione ou retire fundos da sua conta líquida</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider block">Saldo Disponível</span>
+                                            <span className="text-xl sm:text-2xl font-black text-emerald-600 value-text block">{formatBRL(totals.saldo)}</span>
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-wrap gap-3">
+                                        <button 
+                                            onClick={() => setSaldoModal({ isOpen: true, type: 'DEPOSIT', valor: '', data: new Date().toLocaleDateString('pt-BR'), descricao: 'Aporte de Capital' })}
+                                            className="bg-emerald-600 text-white px-6 py-3.5 rounded-2xl text-[9px] font-black uppercase tracking-widest hover:bg-[#133054] shadow-md flex items-center gap-2 transition-all"
+                                        >
+                                            <LucideIcon name="PlusCircle" size={14} /> Depositar Dinheiro
+                                        </button>
+                                        <button 
+                                            onClick={() => setSaldoModal({ isOpen: true, type: 'WITHDRAW', valor: '', data: new Date().toLocaleDateString('pt-BR'), descricao: 'Resgate de Saldo' })}
+                                            className="bg-rose-600 text-white px-6 py-3.5 rounded-2xl text-[9px] font-black uppercase tracking-widest hover:bg-[#133054] shadow-md flex items-center gap-2 transition-all"
+                                        >
+                                            <LucideIcon name="MinusCircle" size={14} /> Sacar Dinheiro
+                                        </button>
+                                    </div>
+                                </div>
                                 {renderTableSection('caixa', 'Reserva Manual', 'manual')}
                                 {renderTableSection('caixaTicker', 'Reserva Cotada', 'ticker')}
                             </>
@@ -1064,6 +1163,74 @@
                                         className="flex-1 py-3.5 bg-[#133054] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-black transition-colors"
                                     >
                                         Gravar Ativo
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* MODAL DE SAQUE / DEPÓSITO DE SALDO LIVRE */}
+                    {saldoModal.isOpen && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in">
+                            <div className="bg-white rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl border border-slate-100 space-y-6">
+                                <div className="flex justify-between items-center">
+                                    <h3 className="text-xl font-black text-[#133054] uppercase tracking-tight">
+                                        {saldoModal.type === 'DEPOSIT' ? 'Depositar no Saldo Livre' : 'Sacar do Saldo Livre'}
+                                    </h3>
+                                    <button onClick={() => { setSaldoModal(prev => ({ ...prev, isOpen: false })); setModalError(""); }} className="text-slate-400 hover:text-slate-600 transition-colors">
+                                        <LucideIcon name="X" size={20} />
+                                    </button>
+                                </div>
+
+                                {modalError && (
+                                    <div className="p-3.5 bg-rose-50 text-rose-700 border border-rose-100 rounded-2xl text-[10px] font-black uppercase flex items-center gap-2">
+                                        <LucideIcon name="AlertCircle" size={14} className="flex-shrink-0" />
+                                        <span>{modalError}</span>
+                                    </div>
+                                )}
+
+                                <div className="space-y-4">
+                                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex justify-between items-center">
+                                        <span className="text-[10px] font-black uppercase text-slate-400">Saldo Atual:</span>
+                                        <span className="font-black text-slate-900 text-sm">{formatBRL(totals.saldo)}</span>
+                                    </div>
+                                    
+                                    <div>
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Valor (R$)</label>
+                                        <input 
+                                            type="text" 
+                                            placeholder="0,00"
+                                            value={saldoModal.valor} 
+                                            onChange={e => setSaldoModal(prev => ({ ...prev, valor: e.target.value }))}
+                                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054] focus:bg-white transition-all text-sm text-slate-900"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Data da Transação</label>
+                                        <input 
+                                            type="text" 
+                                            value={saldoModal.data} 
+                                            onChange={e => setSaldoModal(prev => ({ ...prev, data: e.target.value }))}
+                                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054] focus:bg-white transition-all text-sm text-slate-900"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-3 pt-4">
+                                    <button 
+                                        onClick={() => { setSaldoModal(prev => ({ ...prev, isOpen: false })); setModalError(""); }} 
+                                        className="flex-1 py-3.5 border border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-colors"
+                                    >
+                                        Cancelar
+                                    </button>
+                                    <button 
+                                        onClick={handleSaldoTransaction} 
+                                        className={`flex-1 py-3.5 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-colors ${
+                                            saldoModal.type === 'DEPOSIT' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-lg' : 'bg-rose-600 hover:bg-rose-700 shadow-lg'
+                                        }`}
+                                    >
+                                        {saldoModal.type === 'DEPOSIT' ? 'Depositar' : 'Sacar'}
                                     </button>
                                 </div>
                             </div>
