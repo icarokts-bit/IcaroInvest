@@ -53,7 +53,7 @@
         <div class="flex items-center justify-center min-h-screen">
             <div class="text-center">
                 <div class="w-12 h-12 border-4 border-[#133054] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">Sincronizando IcaroInvest Elite v11.11...</p>
+                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">Sincronizando IcaroInvest Elite v11.12...</p>
             </div>
         </div>
     </div>
@@ -277,7 +277,8 @@
                 precoMedio: '',
                 precoAtual: '',
                 valorAplicado: '',
-                valorAtual: ''
+                valorAtual: '',
+                metaPct: ''
             });
 
             useEffect(() => {
@@ -444,7 +445,6 @@
                     { name: 'realEstate', isCrypto: false },
                     { name: 'caixaTicker', isCrypto: false },
                     { name: 'altStocks', isCrypto: false }
-                    // altCrypto removido para garantir atualização 100% manual pelas criptos
                 ];
                 
                 setGlobalSyncing(true); setSyncStatus("Sincronização Total B3...");
@@ -457,7 +457,6 @@
                         const t = list[i].ticker;
                         setSyncStatus(`A atualizar ${t}...`);
                         try {
-                            // Suporta endpoints inteligentes baseados em ativos cryptos para evitar falhas com BTC e ETH
                             let url = `https://brapi.dev/api/quote/${t}?token=${BRAPI_TOKEN}`;
                             const isCryptoAsset = catObj.isCrypto || t === 'BTC' || t === 'ETH' || t.includes('BTC') || t.includes('ETH');
                             
@@ -537,7 +536,8 @@
                     precoMedio: item.precoMedio !== undefined ? item.precoMedio.toString() : '',
                     precoAtual: item.precoAtual !== undefined ? item.precoAtual.toString() : '',
                     valorAplicado: item.valorAplicado !== undefined ? item.valorAplicado.toString() : '',
-                    valorAtual: item.valorAtual !== undefined ? item.valorAtual.toString() : ''
+                    valorAtual: item.valorAtual !== undefined ? item.valorAtual.toString() : '',
+                    metaPct: item.metaPct !== undefined ? item.metaPct.toString() : '0'
                 });
             };
 
@@ -556,10 +556,12 @@
                         list[idx].quantidade = parseValue(editModal.quantidade);
                         list[idx].precoMedio = parseValue(editModal.precoMedio);
                         list[idx].precoAtual = parseValue(editModal.precoAtual);
+                        list[idx].metaPct = parseValue(editModal.metaPct);
                     } else {
                         list[idx].nome = editModal.nome;
                         list[idx].valorAplicado = parseValue(editModal.valorAplicado);
                         list[idx].valorAtual = parseValue(editModal.valorAtual);
+                        list[idx].metaPct = parseValue(editModal.metaPct);
                     }
                     next[cat] = list;
                     setInvestments(next);
@@ -645,6 +647,7 @@
                     const custoTotal = type === 'ticker' ? (q * pC) : pC;
                     const lucroR$ = pat - custoTotal;
                     const lucroPct = custoTotal > 0 ? (lucroR$ / custoTotal) * 100 : 0;
+                    const metaPct = parseValue(item.metaPct || 0);
                     
                     let varR = 0;
                     if (type === 'ticker' && varPct !== 0) {
@@ -662,12 +665,28 @@
                         _varR: varR,
                         _patrimonio: pat,
                         _lucroR$: lucroR$,
-                        _lucroPct: lucroPct
+                        _lucroPct: lucroPct,
+                        _metaPct: metaPct
+                    };
+                });
+
+                // Total de custo da categoria como base intocada (sem lucro ou prejuízo)
+                const totalCustoCategory = processedData.reduce((acc, item) => acc + item._custoTotal, 0);
+                const totalMetasPlaneadas = processedData.reduce((acc, item) => acc + item._metaPct, 0);
+
+                // Calcular valores ideais baseado no custo total acumulado
+                const finalData = processedData.map(item => {
+                    const custoIdeal = totalCustoCategory * (item._metaPct / 100);
+                    const diffCusto = custoIdeal - item._custoTotal; // Positivo = Falta aportar; Negativo = Sobra aportada
+                    return {
+                        ...item,
+                        _custoIdeal: custoIdeal,
+                        _diffCusto: diffCusto
                     };
                 });
 
                 // Aplicar ordenação
-                const sortedData = [...processedData].sort((a, b) => {
+                const sortedData = [...finalData].sort((a, b) => {
                     const valA = a[sectionSort.key] ?? 0;
                     const valB = b[sectionSort.key] ?? 0;
                     if (typeof valA === 'string') {
@@ -679,20 +698,25 @@
                 return (
                     <div className="bg-white rounded-[2rem] overflow-hidden shadow-sm border border-slate-100 animate-in mb-10">
                         <div className="p-8 bg-slate-50/30 border-b flex justify-between items-center flex-wrap gap-4">
-                            <h2 className="font-black text-[#133054] uppercase tracking-tighter text-2xl">{title}</h2>
+                            <div>
+                                <h2 className="font-black text-[#133054] uppercase tracking-tighter text-2xl">{title}</h2>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+                                    Metas Planeadas: {totalMetasPlaneadas.toFixed(1)}% / 100% (Custo Base: {formatBRL(totalCustoCategory)})
+                                </p>
+                            </div>
                             <button onClick={() => {
                                 if(type === 'ticker') {
                                     const t = prompt("Ticker:"); const q = prompt("Qtd:"); const p = prompt("P. Médio:");
                                     if(t && q) { 
                                         const tickerUpper = t.toUpperCase();
                                         if (EXCLUDED_TICKERS.includes(tickerUpper)) { alert("Ativo excluído."); return; }
-                                        const next = { ...investments, [cat]: [...(investments[cat]||[]), {id: Date.now().toString(), ticker: tickerUpper, quantity: parseValue(q), quantidade: parseValue(q), precoMedio: parseValue(p), precoAtual: parseValue(p)}], movimentacoes: [registrarMovimentacao(null, tickerUpper, 'Compra', q, p), ...(investments.movimentacoes || [])], saldoDisponivel: parseValue(investments.saldoDisponivel) - (parseValue(q) * parseValue(p)) };
+                                        const next = { ...investments, [cat]: [...(investments[cat]||[]), {id: Date.now().toString(), ticker: tickerUpper, quantity: parseValue(q), quantidade: parseValue(q), precoMedio: parseValue(p), precoAtual: parseValue(p), metaPct: 0}], movimentacoes: [registrarMovimentacao(null, tickerUpper, 'Compra', q, p), ...(investments.movimentacoes || [])], saldoDisponivel: parseValue(investments.saldoDisponivel) - (parseValue(q) * parseValue(p)) };
                                         setInvestments(next); save(next);
                                     }
                                 } else {
                                     const n = prompt("Nome:"); const va = prompt("Vlr Aplicado:"); const vt = prompt("Vlr Atual:");
                                     if(n && va) { 
-                                        const next = { ...investments, [cat]: [...(investments[cat]||[]), {id: Date.now().toString(), nome: n, valorAplicado: parseValue(va), valorAtual: parseValue(vt || va)}], movimentacoes: [registrarMovimentacao(null, n, 'Compra', 1, va), ...(investments.movimentacoes || [])], saldoDisponivel: parseValue(investments.saldoDisponivel) - parseValue(va) };
+                                        const next = { ...investments, [cat]: [...(investments[cat]||[]), {id: Date.now().toString(), nome: n, valorAplicado: parseValue(va), valorAtual: parseValue(vt || va), metaPct: 0}], movimentacoes: [registrarMovimentacao(null, n, 'Compra', 1, va), ...(investments.movimentacoes || [])], saldoDisponivel: parseValue(investments.saldoDisponivel) - parseValue(va) };
                                         setInvestments(next); save(next);
                                     }
                                 }
@@ -704,10 +728,11 @@
                                     <tr>
                                         <th className="px-6 py-6" onClick={() => handleSectionSort('_ativo')}>Ativo <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
                                         {type === 'ticker' && <th className="px-6 py-6 text-center" onClick={() => handleSectionSort('_qtd')}>Qtd <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>}
-                                        <th className="px-6 py-6 text-right" onClick={() => handleSectionSort('_custo')}>{type === 'ticker' ? 'Custo Unit.' : 'Aplicado'} <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
-                                        <th className="px-6 py-6 text-right" onClick={() => handleSectionSort('_atual')}>{type === 'ticker' ? 'Atual' : 'Valor Atual'} <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
+                                        <th className="px-6 py-6 text-right" onClick={() => handleSectionSort('_custoTotal')}>{type === 'ticker' ? 'Custo' : 'Aplicado'} <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
+                                        <th className="px-6 py-6 text-right" onClick={() => handleSectionSort('_metaPct')}>Meta % <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
+                                        <th className="px-6 py-6 text-right" onClick={() => handleSectionSort('_diffCusto')}>Falta / Sobra <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
+                                        <th className="px-6 py-6 text-right" onClick={() => handleSectionSort('_atual')}>Valor Atual <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
                                         {type === 'ticker' && <th className="px-6 py-6 text-right" onClick={() => handleSectionSort('_varPct')}>Var. Dia % <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>}
-                                        <th className="px-6 py-6 text-right" onClick={() => handleSectionSort('_varR')}>Var. Dia R$ <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
                                         <th className="px-6 py-6 text-right" onClick={() => handleSectionSort('_lucroR$')}>Lucro / Prejuízo <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
                                         <th className="px-6 py-6 text-right" onClick={() => handleSectionSort('_patrimonio')}>Património <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
                                         <th className="px-6 py-6 text-right min-w-[340px]">Gestão</th>
@@ -718,12 +743,19 @@
                                         <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
                                             <td className="px-6 py-6 font-black text-slate-900 uppercase">{item._ativo}</td>
                                             {type === 'ticker' && <td className="px-6 py-6 text-center font-bold">{item._qtd.toLocaleString(undefined, { maximumFractionDigits: 8 })}</td>}
-                                            <td className="px-6 py-6 text-right font-bold text-slate-400">{formatBRL(item._custo)}</td>
+                                            <td className="px-6 py-6 text-right font-bold text-slate-400">{formatBRL(item._custoTotal)}</td>
+                                            <td className="px-6 py-6 text-right font-black text-slate-900">{item._metaPct.toFixed(1)}%</td>
+                                            <td className="px-6 py-6 text-right font-bold">
+                                                {item._metaPct === 0 ? (
+                                                    <span className="text-slate-300">-</span>
+                                                ) : item._diffCusto > 0 ? (
+                                                    <span className="text-amber-500">Falta {formatBRL(item._diffCusto)}</span>
+                                                ) : (
+                                                    <span className="text-slate-400">Sobra {formatBRL(Math.abs(item._diffCusto))}</span>
+                                                )}
+                                            </td>
                                             <td className="px-6 py-6 text-right font-black text-[#133054]">{formatBRL(item._atual)}</td>
                                             {type === 'ticker' && <td className={`px-6 py-6 text-right font-bold ${item._varPct >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>{item._varPct.toFixed(2)}%</td>}
-                                            <td className={`px-6 py-6 text-right font-bold ${item._varR >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-                                                {type === 'ticker' ? formatBRL(item._varR) : '-'}
-                                            </td>
                                             <td className={`px-6 py-6 text-right font-black ${item._lucroR$ >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
                                                 <div className="flex flex-col items-end">
                                                     <span>{item._lucroR$ >= 0 ? '+' : ''}{formatBRL(item._lucroR$)}</span>
@@ -793,7 +825,6 @@
                             <div className="space-y-10 animate-fade">
                                 {/* Linha de Ativos Clássica com Variação de Dia Integrada em R$ e % */}
                                 <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-                                    {}
                                     <div className="glass p-3 sm:p-4 rounded-premium flex flex-col justify-between min-w-0 shadow-sm hover:shadow-md transition-all flex-1 border border-slate-100">
                                         <div className="flex items-center gap-2 sm:gap-3">
                                             <div className="bg-emerald-600 p-2 sm:p-3 rounded-xl sm:rounded-2xl text-white shadow-md flex-shrink-0">
@@ -1063,7 +1094,6 @@
                         {activeTab === 'caixa' && (
                             <>
                                 <TabSummaryHeader stats={totals.caixa} label="Caixa" />
-                                {}
                                 <div className="bg-white rounded-[2rem] p-6 sm:p-8 shadow-sm border border-slate-100 animate-in mb-8">
                                     <div className="flex justify-between items-center flex-wrap gap-4 mb-6">
                                         <div>
@@ -1104,6 +1134,7 @@
                         )}
                     </main>
 
+                    {}
                     {/* MODAL PREMIUM DE EDIÇÃO DE ATIVOS */}
                     {editModal.isOpen && (
                         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in">
@@ -1186,6 +1217,18 @@
                                             </div>
                                         </>
                                     )}
+
+                                    {/* Campo Unificado de Meta para Ambos os Ativos */}
+                                    <div>
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Meta de Alocação (% do Custo Total da Categoria)</label>
+                                        <input 
+                                            type="text" 
+                                            placeholder="Ex: 15"
+                                            value={editModal.metaPct} 
+                                            onChange={e => setEditModal(prev => ({ ...prev, metaPct: e.target.value }))}
+                                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054] focus:bg-white transition-all text-sm text-slate-900"
+                                        />
+                                    </div>
                                 </div>
 
                                 <div className="flex gap-3 pt-4">
@@ -1228,7 +1271,7 @@
 
                                 <div className="space-y-4">
                                     <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex justify-between items-center">
-                                        <span className="text-[10px] font-black uppercase text-slate-400">Saldo Atual:</span>
+                                        <span className="text-[10px] font-black uppercase text-slate-400">Saldo Atualmente Livre:</span>
                                         <span className="font-black text-slate-900 text-sm">{formatBRL(totals.saldo)}</span>
                                     </div>
                                     
@@ -1274,7 +1317,7 @@
                         </div>
                     )}
 
-                    <footer className="mt-20 py-10 text-center border-t border-slate-100 text-[10px] font-black text-slate-300 uppercase tracking-[0.5em]">IcaroInvest Elite Management v11.11</footer>
+                    <footer className="mt-20 py-10 text-center border-t border-slate-100 text-[10px] font-black text-slate-300 uppercase tracking-[0.5em]">IcaroInvest Elite Management v11.12</footer>
                 </div>
             );
         };
