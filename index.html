@@ -754,6 +754,8 @@
                     return sectionSort.dir === 'desc' ? valB - valA : valA - valB;
                 });
 
+                const saldoAporteDiferenca = totalMetasPlaneadasRs - totalCustoCategory;
+
                 return (
                     <div className="bg-white rounded-[2rem] overflow-hidden shadow-sm border border-slate-100 animate-in mb-10">
                         <div className="p-8 bg-slate-50/30 border-b flex justify-between items-center flex-wrap gap-4">
@@ -781,6 +783,44 @@
                                 }
                             }} className="bg-[#133054] text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-black shadow-lg">+ Novo Ativo</button>
                         </div>
+
+                        {}
+                        <div className="px-8 py-6 bg-slate-50/10 border-b border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between">
+                                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">O quanto tem investido (Custo Real)</span>
+                                <span className="text-sm sm:text-base font-black text-slate-900 mt-1">{formatBRL(totalCustoCategory)}</span>
+                            </div>
+                            
+                            <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between">
+                                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">O quanto tem que ter investido (Meta)</span>
+                                <span className="text-sm sm:text-base font-black text-[#133054] mt-1">{formatBRL(totalMetasPlaneadasRs)}</span>
+                            </div>
+
+                            <div className={`p-4 rounded-2xl border shadow-sm flex flex-col justify-between ${
+                                saldoAporteDiferenca > 0 
+                                    ? 'bg-amber-50/60 border-amber-100 text-amber-800' 
+                                    : saldoAporteDiferenca < 0 
+                                        ? 'bg-emerald-50/60 border-emerald-100 text-emerald-800' 
+                                        : 'bg-slate-50 border-slate-100 text-slate-800'
+                            }`}>
+                                <span className="text-[9px] font-black uppercase tracking-wider opacity-90">Saldo de Aporte</span>
+                                <div className="flex items-center justify-between mt-1">
+                                    <span className="text-sm sm:text-base font-black">
+                                        {formatBRL(Math.abs(saldoAporteDiferenca))}
+                                    </span>
+                                    <span className={`text-[8px] font-black px-2 py-0.5 rounded-lg border uppercase tracking-widest ${
+                                        saldoAporteDiferenca > 0 
+                                            ? 'bg-white border-amber-200 text-amber-700' 
+                                            : saldoAporteDiferenca < 0 
+                                                ? 'bg-white border-emerald-200 text-emerald-700' 
+                                                : 'bg-white border-slate-200 text-slate-700'
+                                    }`}>
+                                        {saldoAporteDiferenca > 0 ? "Falta Aportar (-)" : saldoAporteDiferenca < 0 ? "Sobra / Excesso (+)" : "Alinhado"}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
                         <div className="overflow-x-auto custom-scroll">
                             <table className="w-full text-left">
                                 <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest cursor-pointer select-none">
