@@ -258,6 +258,36 @@
             const [globalSyncing, setGlobalSyncing] = useState(false);
             const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
             
+            const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, index, name, value }) => {
+                const connectorLength = isMobile ? 12 : 24;
+                const RADIAN = Math.PI / 180;
+                const sin = Math.sin(-RADIAN * midAngle);
+                const cos = Math.cos(-RADIAN * midAngle);
+                const sx = cx + (outerRadius + 4) * cos;
+                const sy = cy + (outerRadius + 4) * sin;
+                const mx = cx + (outerRadius + (connectorLength - 6)) * cos;
+                const my = cy + (outerRadius + (connectorLength - 6)) * sin;
+                const ex = mx + (cos >= 0 ? 1 : -1) * connectorLength;
+                const ey = my;
+                const textAnchor = cos >= 0 ? 'start' : 'end';
+                
+                const tx = ex + (cos >= 0 ? 6 : -6);
+                const ty = ey;
+
+                return (
+                    <g>
+                        <path d={`M${sx},${sy}L${mx},${my}L${ex},${ey}`} stroke={COLORS[index % COLORS.length]} fill="none" strokeWidth={1.5} opacity={0.65} />
+                        <circle cx={ex} cy={ey} r={isMobile ? 2 : 3} fill={COLORS[index % COLORS.length]} />
+                        <text x={tx} y={ty - (isMobile ? 4 : 6)} fill="#133054" textAnchor={textAnchor} dominantBaseline="central" style={{ fontSize: isMobile ? '8px' : '10px', fontWeight: 900, fontFamily: 'Inter', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            {name}
+                        </text>
+                        <text x={tx} y={ty + (isMobile ? 5 : 8)} fill="#64748b" textAnchor={textAnchor} dominantBaseline="central" style={{ fontSize: isMobile ? '8px' : '9.5px', fontWeight: 700, fontFamily: 'Inter' }}>
+                            {isMobile ? `${(percent * 100).toFixed(0)}%` : `${formatBRL(value)} (${(percent * 100).toFixed(1)}%)`}
+                        </text>
+                    </g>
+                );
+            };
+
             const [marketTopGainers, setMarketTopGainers] = useState([]);
             const [marketTopLosers, setMarketTopLosers] = useState([]);
             const [marketSort, setMarketSort] = useState({ key: 'patrimonio', dir: 'desc' });
@@ -278,7 +308,7 @@
                 precoAtual: '',
                 valorAplicado: '',
                 valorAtual: '',
-                metaPct: ''
+                metaRs: ''
             });
 
             useEffect(() => {
@@ -525,6 +555,21 @@
 
             // Abre o modal com os dados carregados para edição
             const handleOpenEditModal = (cat, item, type) => {
+                // Cálculo para migração proporcional se houver dados legados em metaPct
+                const getMetaValue = () => {
+                    if (item.metaRs !== undefined) return item.metaRs.toString();
+                    if (item.metaPct !== undefined && parseValue(item.metaPct) > 0) {
+                        const categoryData = investments[cat] || [];
+                        const totalCusto = categoryData.reduce((acc, i) => {
+                            const q = type === 'ticker' ? parseValue(i.quantidade) : 1;
+                            const pC = type === 'ticker' ? parseValue(i.precoMedio) : parseValue(i.valorAplicado);
+                            return acc + (type === 'ticker' ? (q * pC) : pC);
+                        }, 0);
+                        return ((parseValue(item.metaPct) / 100) * totalCusto).toFixed(2);
+                    }
+                    return '0';
+                };
+
                 setEditModal({
                     isOpen: true,
                     cat,
@@ -537,7 +582,7 @@
                     precoAtual: item.precoAtual !== undefined ? item.precoAtual.toString() : '',
                     valorAplicado: item.valorAplicado !== undefined ? item.valorAplicado.toString() : '',
                     valorAtual: item.valorAtual !== undefined ? item.valorAtual.toString() : '',
-                    metaPct: item.metaPct !== undefined ? item.metaPct.toString() : '0'
+                    metaRs: getMetaValue()
                 });
             };
 
@@ -556,12 +601,14 @@
                         list[idx].quantidade = parseValue(editModal.quantidade);
                         list[idx].precoMedio = parseValue(editModal.precoMedio);
                         list[idx].precoAtual = parseValue(editModal.precoAtual);
-                        list[idx].metaPct = parseValue(editModal.metaPct);
+                        list[idx].metaRs = parseValue(editModal.metaRs);
+                        if (list[idx].metaPct !== undefined) delete list[idx].metaPct;
                     } else {
                         list[idx].nome = editModal.nome;
                         list[idx].valorAplicado = parseValue(editModal.valorAplicado);
                         list[idx].valorAtual = parseValue(editModal.valorAtual);
-                        list[idx].metaPct = parseValue(editModal.metaPct);
+                        list[idx].metaRs = parseValue(editModal.metaRs);
+                        if (list[idx].metaPct !== undefined) delete list[idx].metaPct;
                     }
                     next[cat] = list;
                     setInvestments(next);
@@ -637,6 +684,13 @@
             const renderTableSection = (cat, title, type = 'ticker') => {
                 const rawData = (investments[cat] || []);
                 
+                // Pré-calculo do custo total para migrações legadas proporcionais
+                const tempCustoTotal = rawData.reduce((acc, item) => {
+                    const q = type === 'ticker' ? parseValue(item.quantidade) : 1;
+                    const pC = type === 'ticker' ? parseValue(item.precoMedio) : parseValue(item.valorAplicado);
+                    return acc + (type === 'ticker' ? (q * pC) : pC);
+                }, 0);
+
                 // Preparar dados para ordenação
                 const processedData = rawData.map(item => {
                     const q = type === 'ticker' ? parseValue(item.quantidade) : 1;
@@ -647,7 +701,14 @@
                     const custoTotal = type === 'ticker' ? (q * pC) : pC;
                     const lucroR$ = pat - custoTotal;
                     const lucroPct = custoTotal > 0 ? (lucroR$ / custoTotal) * 100 : 0;
-                    const metaPct = parseValue(item.metaPct || 0);
+                    
+                    // Tratamento dinâmico para migração de metas % para R$
+                    let metaRs = 0;
+                    if (item.metaRs !== undefined) {
+                        metaRs = parseValue(item.metaRs);
+                    } else if (item.metaPct !== undefined && parseValue(item.metaPct) > 0) {
+                        metaRs = (parseValue(item.metaPct) / 100) * tempCustoTotal;
+                    }
                     
                     let varR = 0;
                     if (type === 'ticker' && varPct !== 0) {
@@ -666,21 +727,19 @@
                         _patrimonio: pat,
                         _lucroR$: lucroR$,
                         _lucroPct: lucroPct,
-                        _metaPct: metaPct
+                        _metaRs: metaRs
                     };
                 });
 
-                // Total de custo da categoria como base intocada (sem lucro ou prejuízo)
+                // Total de custo e metas da categoria
                 const totalCustoCategory = processedData.reduce((acc, item) => acc + item._custoTotal, 0);
-                const totalMetasPlaneadas = processedData.reduce((acc, item) => acc + item._metaPct, 0);
+                const totalMetasPlaneadasRs = processedData.reduce((acc, item) => acc + item._metaRs, 0);
 
-                // Calcular valores ideais baseado no custo total acumulado
+                // Calcular valores ideais baseado no custo desejado direto em R$
                 const finalData = processedData.map(item => {
-                    const custoIdeal = totalCustoCategory * (item._metaPct / 100);
-                    const diffCusto = custoIdeal - item._custoTotal; // Positivo = Falta aportar; Negativo = Sobra aportada
+                    const diffCusto = item._metaRs - item._custoTotal; // Positivo = Falta aportar; Negativo = Sobra aportada
                     return {
                         ...item,
-                        _custoIdeal: custoIdeal,
                         _diffCusto: diffCusto
                     };
                 });
@@ -701,7 +760,7 @@
                             <div>
                                 <h2 className="font-black text-[#133054] uppercase tracking-tighter text-2xl">{title}</h2>
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-                                    Metas Planeadas: {totalMetasPlaneadas.toFixed(1)}% / 100% (Custo Base: {formatBRL(totalCustoCategory)})
+                                    Meta Planeada da Carteira: {formatBRL(totalMetasPlaneadasRs)} (Custo Atual Aportado: {formatBRL(totalCustoCategory)})
                                 </p>
                             </div>
                             <button onClick={() => {
@@ -710,13 +769,13 @@
                                     if(t && q) { 
                                         const tickerUpper = t.toUpperCase();
                                         if (EXCLUDED_TICKERS.includes(tickerUpper)) { alert("Ativo excluído."); return; }
-                                        const next = { ...investments, [cat]: [...(investments[cat]||[]), {id: Date.now().toString(), ticker: tickerUpper, quantity: parseValue(q), quantidade: parseValue(q), precoMedio: parseValue(p), precoAtual: parseValue(p), metaPct: 0}], movimentacoes: [registrarMovimentacao(null, tickerUpper, 'Compra', q, p), ...(investments.movimentacoes || [])], saldoDisponivel: parseValue(investments.saldoDisponivel) - (parseValue(q) * parseValue(p)) };
+                                        const next = { ...investments, [cat]: [...(investments[cat]||[]), {id: Date.now().toString(), ticker: tickerUpper, quantity: parseValue(q), quantidade: parseValue(q), precoMedio: parseValue(p), precoAtual: parseValue(p), metaRs: 0}], movimentacoes: [registrarMovimentacao(null, tickerUpper, 'Compra', q, p), ...(investments.movimentacoes || [])], saldoDisponivel: parseValue(investments.saldoDisponivel) - (parseValue(q) * parseValue(p)) };
                                         setInvestments(next); save(next);
                                     }
                                 } else {
                                     const n = prompt("Nome:"); const va = prompt("Vlr Aplicado:"); const vt = prompt("Vlr Atual:");
                                     if(n && va) { 
-                                        const next = { ...investments, [cat]: [...(investments[cat]||[]), {id: Date.now().toString(), nome: n, valorAplicado: parseValue(va), valorAtual: parseValue(vt || va), metaPct: 0}], movimentacoes: [registrarMovimentacao(null, n, 'Compra', 1, va), ...(investments.movimentacoes || [])], saldoDisponivel: parseValue(investments.saldoDisponivel) - parseValue(va) };
+                                        const next = { ...investments, [cat]: [...(investments[cat]||[]), {id: Date.now().toString(), nome: n, valorAplicado: parseValue(va), valorAtual: parseValue(vt || va), metaRs: 0}], movimentacoes: [registrarMovimentacao(null, n, 'Compra', 1, va), ...(investments.movimentacoes || [])], saldoDisponivel: parseValue(investments.saldoDisponivel) - parseValue(va) };
                                         setInvestments(next); save(next);
                                     }
                                 }
@@ -729,7 +788,7 @@
                                         <th className="px-6 py-6" onClick={() => handleSectionSort('_ativo')}>Ativo <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
                                         {type === 'ticker' && <th className="px-6 py-6 text-center" onClick={() => handleSectionSort('_qtd')}>Qtd <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>}
                                         <th className="px-6 py-6 text-right" onClick={() => handleSectionSort('_custoTotal')}>{type === 'ticker' ? 'Custo' : 'Aplicado'} <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
-                                        <th className="px-6 py-6 text-right" onClick={() => handleSectionSort('_metaPct')}>Meta % <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
+                                        <th className="px-6 py-6 text-right" onClick={() => handleSectionSort('_metaRs')}>Meta (R$) <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
                                         <th className="px-6 py-6 text-right" onClick={() => handleSectionSort('_diffCusto')}>Falta / Sobra <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
                                         <th className="px-6 py-6 text-right" onClick={() => handleSectionSort('_atual')}>Valor Atual <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
                                         {type === 'ticker' && <th className="px-6 py-6 text-right" onClick={() => handleSectionSort('_varPct')}>Var. Dia % <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>}
@@ -744,9 +803,9 @@
                                             <td className="px-6 py-6 font-black text-slate-900 uppercase">{item._ativo}</td>
                                             {type === 'ticker' && <td className="px-6 py-6 text-center font-bold">{item._qtd.toLocaleString(undefined, { maximumFractionDigits: 8 })}</td>}
                                             <td className="px-6 py-6 text-right font-bold text-slate-400">{formatBRL(item._custoTotal)}</td>
-                                            <td className="px-6 py-6 text-right font-black text-slate-900">{item._metaPct.toFixed(1)}%</td>
+                                            <td className="px-6 py-6 text-right font-black text-slate-900">{formatBRL(item._metaRs)}</td>
                                             <td className="px-6 py-6 text-right font-bold">
-                                                {item._metaPct === 0 ? (
+                                                {item._metaRs === 0 ? (
                                                     <span className="text-slate-300">-</span>
                                                 ) : item._diffCusto > 0 ? (
                                                     <span className="text-amber-500">Falta {formatBRL(item._diffCusto)}</span>
@@ -876,11 +935,22 @@
                                         <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-10 text-center">Alocação Total</h2>
                                         <div className="flex-1 w-full h-full">
                                             <ResponsiveContainer width="100%" height="100%">
-                                                <PieChart>
-                                                    <Pie data={[{ name: 'Ações', value: totals.acoes.atual }, { name: 'RE', value: totals.re.atual }, { name: 'Caixa', value: totals.caixa.atual }, { name: 'Alt', value: totals.alt.atual }].filter(d => d.value > 0)} innerRadius={80} outerRadius={140} paddingAngle={8} dataKey="value" stroke="none" cornerRadius={12}>
+                                                {}
+                                                <PieChart margin={{ top: 20, right: 35, left: 35, bottom: 20 }}>
+                                                    <Pie 
+                                                        data={[{ name: 'Ações', value: totals.acoes.atual }, { name: 'RE', value: totals.re.atual }, { name: 'Caixa', value: totals.caixa.atual }, { name: 'Alt', value: totals.alt.atual }].filter(d => d.value > 0)} 
+                                                        innerRadius={isMobile ? 40 : 65} 
+                                                        outerRadius={isMobile ? 70 : 100} 
+                                                        paddingAngle={6} 
+                                                        dataKey="value" 
+                                                        stroke="none" 
+                                                        cornerRadius={10}
+                                                        label={renderCustomizedLabel}
+                                                        labelLine={false}
+                                                    >
                                                         {COLORS.map((c, i) => <Cell key={i} fill={c} />)}
                                                     </Pie>
-                                                    <Tooltip contentStyle={{ borderRadius: '1.5rem', border: 'none', boxShadow: '0 10px 20px rgba(0,0,0,0.05)', fontBold: '900' }} formatter={(v) => formatBRL(v)} />
+                                                    <Tooltip contentStyle={{ borderRadius: '1.5rem', border: 'none', boxShadow: '0 10px 20px rgba(0,0,0,0.05)', fontWeight: '900' }} formatter={(v) => formatBRL(v)} />
                                                 </PieChart>
                                             </ResponsiveContainer>
                                         </div>
@@ -1218,14 +1288,15 @@
                                         </>
                                     )}
 
-                                    {/* Campo Unificado de Meta para Ambos os Ativos */}
+                                    {}
+                                    {/* Campo Unificado de Meta para Ambos os Ativos em R$ */}
                                     <div>
-                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Meta de Alocação (% do Custo Total da Categoria)</label>
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Meta de Alocação Custo Ideal (R$)</label>
                                         <input 
                                             type="text" 
-                                            placeholder="Ex: 15"
-                                            value={editModal.metaPct} 
-                                            onChange={e => setEditModal(prev => ({ ...prev, metaPct: e.target.value }))}
+                                            placeholder="Ex: 5000"
+                                            value={editModal.metaRs} 
+                                            onChange={e => setEditModal(prev => ({ ...prev, metaRs: e.target.value }))}
                                             className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054] focus:bg-white transition-all text-sm text-slate-900"
                                         />
                                     </div>
