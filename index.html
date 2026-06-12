@@ -53,7 +53,7 @@
         <div class="flex items-center justify-center min-h-screen">
             <div class="text-center">
                 <div class="w-12 h-12 border-4 border-[#133054] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">Sincronizando IcaroInvest Elite v11.12...</p>
+                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">A carregar IcaroInvest Elite v11.13...</p>
             </div>
         </div>
     </div>
@@ -69,7 +69,8 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
         import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
+        // Importações de Auth alteradas para Google Auth
+        import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBy8hqZtXZO6CsK45INpunruxbZtdbxJx4",
@@ -83,12 +84,12 @@
             const app = initializeApp(firebaseConfig);
             const db = getFirestore(app);
             const auth = getAuth(app);
-            window.firebaseAPI = { db, doc, setDoc, onSnapshot, auth, signInAnonymously, onAuthStateChanged };
+            window.firebaseAPI = { db, doc, setDoc, onSnapshot, auth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged };
         } catch (e) { console.error("Firebase Fail:", e); }
     </script>
 
     <script type="text/babel">
-        const { useState, useEffect, useMemo } = React;
+        const { useState, useEffect, useMemo, useRef } = React;
         const { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } = window.Recharts;
 
         const BRAPI_TOKEN = "pZapqBJxy1rE4pq3g4vy69";
@@ -97,44 +98,28 @@
         // Ativos ignorados globalmente
         const EXCLUDED_TICKERS = ['CHAINLINK', 'PENDLE'];
 
-        // Parser numérico inteligente e ultra-robusto que protege frações cryptos e formatos PT-BR / EN
         const parseValue = (val) => {
             if (val === null || val === undefined || val === '') return 0;
             if (typeof val === 'number') return val;
             let clean = val.toString().trim();
             
-            // Se contiver vírgula, indica formato PT-BR (ex: "1.250,50" -> "1250.50" ou "0,05" -> "0.05")
             if (clean.includes(',')) {
                 let ptClean = clean.replace(/\./g, '').replace(',', '.');
                 return parseFloat(ptClean) || 0;
             }
-            
-            // Se contiver ponto, checa se é milhar ou decimal no padrão PT-BR sem vírgulas
             if (clean.includes('.')) {
                 const pointsCount = (clean.match(/\./g) || []).length;
-                if (pointsCount > 1) {
-                    return parseFloat(clean.replace(/\./g, '')) || 0;
-                }
-                
-                // Se começar com "0.", é garantidamente decimal (ex: 0.00229555)
-                if (clean.startsWith('0.')) {
-                    return parseFloat(clean) || 0;
-                }
-                
-                // Se o ponto separa exatamente 3 dígitos finais e a parte inteira for maior que 9,
-                // trata-se de um separador de milhar brasileiro (ex: 581.314)
+                if (pointsCount > 1) return parseFloat(clean.replace(/\./g, '')) || 0;
+                if (clean.startsWith('0.')) return parseFloat(clean) || 0;
                 const parts = clean.split('.');
                 if (parts[1] && parts[1].length === 3 && parseInt(parts[0]) > 9) {
                     return parseFloat(clean.replace(/\./g, '')) || 0;
                 }
             }
-            
             return parseFloat(clean) || 0;
         };
 
-        const formatBRL = (v) => {
-            return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
-        };
+        const formatBRL = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
 
         const LucideIcon = ({ name, size = 20, className = "" }) => {
             const [ready, setReady] = useState(false);
@@ -165,37 +150,33 @@
             </div>
         );
 
-        // Componente Executivo de Resumo para cada aba
-        const TabSummaryHeader = ({ stats, label }) => {
-            return (
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8 animate-in">
-                    <div className="glass p-4 sm:p-5 rounded-premium shadow-sm border border-slate-100 min-w-0">
-                        <p className="text-[8px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 truncate">Património {label}</p>
-                        <h3 className="text-sm sm:text-base md:text-lg lg:text-xl font-black text-[#133054] truncate tabular">{formatBRL(stats.atual)}</h3>
-                    </div>
-                    <div className="glass p-4 sm:p-5 rounded-premium shadow-sm border border-slate-100 min-w-0">
-                        <p className="text-[8px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 truncate">Total Investido / Custo</p>
-                        <h3 className="text-sm sm:text-base md:text-lg lg:text-xl font-black text-slate-500 truncate tabular">{formatBRL(stats.investido)}</h3>
-                    </div>
-                    <div className="glass p-4 sm:p-5 rounded-premium shadow-sm border border-slate-100 min-w-0">
-                        <p className="text-[8px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 truncate">Lucro / Prejuízo</p>
-                        <h3 className={`text-sm sm:text-base md:text-lg lg:text-xl font-black truncate tabular ${stats.lucro >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-                            {formatBRL(stats.lucro)}
-                            <span className="text-[10px] font-bold ml-1">({stats.lucroPct.toFixed(2)}%)</span>
-                        </h3>
-                    </div>
-                    <div className="glass p-4 sm:p-5 rounded-premium shadow-sm border border-slate-100 min-w-0">
-                        <p className="text-[8px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 truncate">Variação Diária</p>
-                        <h3 className={`text-sm sm:text-base md:text-lg lg:text-xl font-black truncate tabular ${stats.variacaoDiaR$ >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-                            {stats.variacaoDiaR$ >= 0 ? '+' : ''}{formatBRL(stats.variacaoDiaR$)}
-                            <span className="text-[10px] font-bold ml-1">({stats.varDiaPct.toFixed(2)}%)</span>
-                        </h3>
-                    </div>
+        const TabSummaryHeader = ({ stats, label }) => (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8 animate-in">
+                <div className="glass p-4 sm:p-5 rounded-premium shadow-sm border border-slate-100 min-w-0">
+                    <p className="text-[8px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 truncate">Património {label}</p>
+                    <h3 className="text-sm sm:text-base md:text-lg lg:text-xl font-black text-[#133054] truncate tabular">{formatBRL(stats.atual)}</h3>
                 </div>
-            );
-        };
+                <div className="glass p-4 sm:p-5 rounded-premium shadow-sm border border-slate-100 min-w-0">
+                    <p className="text-[8px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 truncate">Total Investido / Custo</p>
+                    <h3 className="text-sm sm:text-base md:text-lg lg:text-xl font-black text-slate-500 truncate tabular">{formatBRL(stats.investido)}</h3>
+                </div>
+                <div className="glass p-4 sm:p-5 rounded-premium shadow-sm border border-slate-100 min-w-0">
+                    <p className="text-[8px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 truncate">Lucro / Prejuízo</p>
+                    <h3 className={`text-sm sm:text-base md:text-lg lg:text-xl font-black truncate tabular ${stats.lucro >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                        {formatBRL(stats.lucro)}
+                        <span className="text-[10px] font-bold ml-1">({stats.lucroPct.toFixed(2)}%)</span>
+                    </h3>
+                </div>
+                <div className="glass p-4 sm:p-5 rounded-premium shadow-sm border border-slate-100 min-w-0">
+                    <p className="text-[8px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 truncate">Variação Diária</p>
+                    <h3 className={`text-sm sm:text-base md:text-lg lg:text-xl font-black truncate tabular ${stats.variacaoDiaR$ >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                        {stats.variacaoDiaR$ >= 0 ? '+' : ''}{formatBRL(stats.variacaoDiaR$)}
+                        <span className="text-[10px] font-bold ml-1">({stats.varDiaPct.toFixed(2)}%)</span>
+                    </h3>
+                </div>
+            </div>
+        );
 
-        // Cartão Analítico detalhado por aba para exibição consolidada no Dashboard
         const CategoryPerformanceCard = ({ title, stats, icon, colorClass, borderClass }) => (
             <div className={`bg-white p-5 sm:p-6 rounded-[2rem] border ${borderClass} shadow-sm hover:shadow-md transition-all flex flex-col justify-between min-w-0`}>
                 <div className="flex items-center justify-between mb-4">
@@ -237,6 +218,11 @@
         );
 
         const App = () => {
+            // Auth State
+            const [user, setUser] = useState(null);
+            const [authLoading, setAuthLoading] = useState(true);
+
+            // Core State
             const [activeTab, setActiveTab] = useState('dashboard');
             const [investments, setInvestments] = useState({ 
                 acoes: [], realEstate: [], caixa: [], alternativos: [],
@@ -247,17 +233,129 @@
             const [syncStatus, setSyncStatus] = useState("");
             
             const [saldoModal, setSaldoModal] = useState({
-                isOpen: false,
-                type: 'WITHDRAW', // 'DEPOSIT' ou 'WITHDRAW'
-                valor: '',
-                data: new Date().toLocaleDateString('pt-BR'),
-                descricao: ''
+                isOpen: false, type: 'WITHDRAW', valor: '', data: new Date().toLocaleDateString('pt-BR'), descricao: ''
             });
             const [modalError, setModalError] = useState("");
-
             const [globalSyncing, setGlobalSyncing] = useState(false);
             const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
             
+            const [marketTopGainers, setMarketTopGainers] = useState([]);
+            const [marketTopLosers, setMarketTopLosers] = useState([]);
+            const [marketSort, setMarketSort] = useState({ key: 'patrimonio', dir: 'desc' });
+            const [sectionSort, setSectionSort] = useState({ key: 'patrimonio', dir: 'desc' });
+
+            const fileInputRef = useRef(null);
+
+            const [editModal, setEditModal] = useState({
+                isOpen: false, cat: '', type: '', item: null, ticker: '', nome: '',
+                quantidade: '', precoMedio: '', precoAtual: '', valorAplicado: '', valorAtual: '', metaRs: ''
+            });
+
+            // Authentication Effect
+            useEffect(() => {
+                if (!window.firebaseAPI) {
+                    setAuthLoading(false);
+                    return;
+                }
+                const { auth, onAuthStateChanged, db, doc, onSnapshot, setDoc } = window.firebaseAPI;
+                
+                const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+                    setUser(currentUser);
+                    setAuthLoading(false);
+                    
+                    if (currentUser) {
+                        onSnapshot(doc(db, 'users', currentUser.uid), (snap) => {
+                            if (snap.exists()) {
+                                setInvestments(prevState => ({...prevState, ...snap.data()}));
+                            } else {
+                                // Conta nova - cria a estrutura padrão base
+                                const initialData = {
+                                    acoes: [], realEstate: [], caixa: [], alternativos: [],
+                                    caixaTicker: [], altFunds: [], altStocks: [], altCrypto: [], dividendos: [],
+                                    historico: [], movimentacoes: [], saldoDisponivel: 0
+                                };
+                                setDoc(doc(db, 'users', currentUser.uid), initialData);
+                                setInvestments(initialData);
+                            }
+                        });
+                    }
+                });
+                return () => unsubscribe();
+            }, []);
+
+            useEffect(() => {
+                const handleResize = () => setIsMobile(window.innerWidth < 768);
+                window.addEventListener('resize', handleResize);
+                return () => window.removeEventListener('resize', handleResize);
+            }, []);
+
+            useEffect(() => {
+                if (activeTab === 'mercado') fetchMarketMovers();
+            }, [activeTab]);
+
+            // Funções de Autenticação e Restauração
+            const handleLogin = async () => {
+                const { auth, GoogleAuthProvider, signInWithPopup } = window.firebaseAPI;
+                const provider = new GoogleAuthProvider();
+                try {
+                    await signInWithPopup(auth, provider);
+                } catch (error) {
+                    console.error("Login failed:", error);
+                    alert("Erro no Login. Se estiver num ambiente bloqueado (iFrame/Canvas), por favor abra esta página num separador separado.");
+                }
+            };
+
+            const handleLogout = async () => {
+                const { auth, signOut } = window.firebaseAPI;
+                try {
+                    await signOut(auth);
+                } catch (error) {
+                    console.error("Logout failed:", error);
+                }
+            };
+
+            const exportBackup = () => {
+                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(investments));
+                const downloadAnchorNode = document.createElement('a');
+                downloadAnchorNode.setAttribute("href", dataStr);
+                downloadAnchorNode.setAttribute("download", `icaroinvest-backup-${new Date().toISOString().slice(0,10)}.json`);
+                document.body.appendChild(downloadAnchorNode);
+                downloadAnchorNode.click();
+                downloadAnchorNode.remove();
+                setSyncStatus("Backup exportado com sucesso!");
+                setTimeout(() => setSyncStatus(""), 3000);
+            };
+
+            const handleImportBackup = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = async (event) => {
+                    try {
+                        const parsed = JSON.parse(event.target.result);
+                        if (parsed && typeof parsed === 'object') {
+                            const next = { ...investments, ...parsed };
+                            setInvestments(next);
+                            await save(next);
+                            setSyncStatus("Dados restaurados com sucesso!");
+                            setTimeout(() => setSyncStatus(""), 3000);
+                        }
+                    } catch (err) {
+                        alert("Erro ao ler o ficheiro de backup. Certifique-se de que é um ficheiro JSON válido.");
+                    }
+                };
+                reader.readAsText(file);
+                // Reset input
+                if (fileInputRef.current) fileInputRef.current.value = "";
+            };
+
+            const save = async (newData) => {
+                if (!window.firebaseAPI || !user) return;
+                const { db, doc, setDoc } = window.firebaseAPI;
+                await setDoc(doc(db, 'users', user.uid), newData);
+            };
+
+            // Gráfico Labels
             const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, index, name, value }) => {
                 const connectorLength = isMobile ? 12 : 24;
                 const RADIAN = Math.PI / 180;
@@ -288,52 +386,6 @@
                 );
             };
 
-            const [marketTopGainers, setMarketTopGainers] = useState([]);
-            const [marketTopLosers, setMarketTopLosers] = useState([]);
-            const [marketSort, setMarketSort] = useState({ key: 'patrimonio', dir: 'desc' });
-            
-            // Estado de ordenação para as seções individuais
-            const [sectionSort, setSectionSort] = useState({ key: 'patrimonio', dir: 'desc' });
-
-            // Estado para o Modal Premium de Edição de Ativos
-            const [editModal, setEditModal] = useState({
-                isOpen: false,
-                cat: '',
-                type: '', // 'ticker' ou 'manual'
-                item: null,
-                ticker: '',
-                nome: '',
-                quantidade: '',
-                precoMedio: '',
-                precoAtual: '',
-                valorAplicado: '',
-                valorAtual: '',
-                metaRs: ''
-            });
-
-            useEffect(() => {
-                const handleResize = () => setIsMobile(window.innerWidth < 768);
-                window.addEventListener('resize', handleResize);
-                return () => window.removeEventListener('resize', handleResize);
-            }, []);
-
-            useEffect(() => {
-                if (!window.firebaseAPI) return;
-                const { auth, signInAnonymously, onAuthStateChanged, db, doc, onSnapshot } = window.firebaseAPI;
-                signInAnonymously(auth).catch(console.error);
-                onAuthStateChanged(auth, (user) => {
-                    if (user) {
-                        onSnapshot(doc(db, 'investments', 'portfolio_principal'), (snap) => {
-                            if (snap.exists()) setInvestments(prevState => ({...prevState, ...snap.data()}));
-                        });
-                    }
-                });
-            }, []);
-
-            useEffect(() => {
-                if (activeTab === 'mercado') fetchMarketMovers();
-            }, [activeTab]);
-
             const fetchMarketMovers = async () => {
                 try {
                     setSyncStatus("Atualizando mercado...");
@@ -346,12 +398,6 @@
                     if (dataL.stocks) setMarketTopLosers(filterMainStocks(dataL.stocks).slice(0, 10));
                     setSyncStatus("");
                 } catch (e) { console.error(e); setSyncStatus("Erro de conexão B3."); }
-            };
-
-            const save = async (newData) => {
-                if (!window.firebaseAPI) return;
-                const { db, doc, setDoc } = window.firebaseAPI;
-                await setDoc(doc(db, 'investments', 'portfolio_principal'), newData);
             };
 
             const registrarMovimentacao = (data, ativo, tipo, qtd, valorUnit) => ({
@@ -466,9 +512,6 @@
                 });
             }, [investments, marketSort]);
 
-            const handleMarketSort = (key) => setMarketSort(prev => ({ key, dir: prev.key === key && prev.dir === 'desc' ? 'asc' : 'desc' }));
-            const handleSectionSort = (key) => setSectionSort(prev => ({ key, dir: prev.key === key && prev.dir === 'desc' ? 'asc' : 'desc' }));
-
             const syncGlobalPortfolio = async () => {
                 const categories = [
                     { name: 'acoes', isCrypto: false },
@@ -553,9 +596,7 @@
                 }
             };
 
-            // Abre o modal com os dados carregados para edição
             const handleOpenEditModal = (cat, item, type) => {
-                // Cálculo para migração proporcional se houver dados legados em metaPct
                 const getMetaValue = () => {
                     if (item.metaRs !== undefined) return item.metaRs.toString();
                     if (item.metaPct !== undefined && parseValue(item.metaPct) > 0) {
@@ -571,12 +612,8 @@
                 };
 
                 setEditModal({
-                    isOpen: true,
-                    cat,
-                    type,
-                    item,
-                    ticker: item.ticker || '',
-                    nome: item.nome || '',
+                    isOpen: true, cat, type, item,
+                    ticker: item.ticker || '', nome: item.nome || '',
                     quantidade: item.quantidade !== undefined ? item.quantidade.toString() : '',
                     precoMedio: item.precoMedio !== undefined ? item.precoMedio.toString() : '',
                     precoAtual: item.precoAtual !== undefined ? item.precoAtual.toString() : '',
@@ -586,7 +623,6 @@
                 });
             };
 
-            // Salva as alterações feitas no Modal Premium
             const handleSaveEdit = () => {
                 const { cat, type, item } = editModal;
                 if (!item) return;
@@ -684,14 +720,12 @@
             const renderTableSection = (cat, title, type = 'ticker') => {
                 const rawData = (investments[cat] || []);
                 
-                // Pré-calculo do custo total para migrações legadas proporcionais
                 const tempCustoTotal = rawData.reduce((acc, item) => {
                     const q = type === 'ticker' ? parseValue(item.quantidade) : 1;
                     const pC = type === 'ticker' ? parseValue(item.precoMedio) : parseValue(item.valorAplicado);
                     return acc + (type === 'ticker' ? (q * pC) : pC);
                 }, 0);
 
-                // Preparar dados para ordenação
                 const processedData = rawData.map(item => {
                     const q = type === 'ticker' ? parseValue(item.quantidade) : 1;
                     const pA = type === 'ticker' ? parseValue(item.precoAtual) : parseValue(item.valorAtual);
@@ -702,7 +736,6 @@
                     const lucroR$ = pat - custoTotal;
                     const lucroPct = custoTotal > 0 ? (lucroR$ / custoTotal) * 100 : 0;
                     
-                    // Tratamento dinâmico para migração de metas % para R$
                     let metaRs = 0;
                     if (item.metaRs !== undefined) {
                         metaRs = parseValue(item.metaRs);
@@ -716,41 +749,25 @@
                         varR = (pA - prevP) * q;
                     }
                     return { 
-                        ...item, 
-                        _ativo: type === 'ticker' ? item.ticker : item.nome,
-                        _qtd: q,
-                        _custo: pC, // custo unitário / valor aplicado individual
-                        _custoTotal: custoTotal,
-                        _atual: pA,
-                        _varPct: varPct,
-                        _varR: varR,
-                        _patrimonio: pat,
-                        _lucroR$: lucroR$,
-                        _lucroPct: lucroPct,
-                        _metaRs: metaRs
+                        ...item, _ativo: type === 'ticker' ? item.ticker : item.nome,
+                        _qtd: q, _custo: pC, _custoTotal: custoTotal, _atual: pA,
+                        _varPct: varPct, _varR: varR, _patrimonio: pat,
+                        _lucroR$: lucroR$, _lucroPct: lucroPct, _metaRs: metaRs
                     };
                 });
 
-                // Total de custo e metas da categoria
                 const totalCustoCategory = processedData.reduce((acc, item) => acc + item._custoTotal, 0);
                 const totalMetasPlaneadasRs = processedData.reduce((acc, item) => acc + item._metaRs, 0);
 
-                // Calcular valores ideais baseado no custo desejado direto em R$
                 const finalData = processedData.map(item => {
-                    const diffCusto = item._metaRs - item._custoTotal; // Positivo = Falta aportar; Negativo = Sobra aportada
-                    return {
-                        ...item,
-                        _diffCusto: diffCusto
-                    };
+                    const diffCusto = item._metaRs - item._custoTotal;
+                    return { ...item, _diffCusto: diffCusto };
                 });
 
-                // Aplicar ordenação
                 const sortedData = [...finalData].sort((a, b) => {
                     const valA = a[sectionSort.key] ?? 0;
                     const valB = b[sectionSort.key] ?? 0;
-                    if (typeof valA === 'string') {
-                        return sectionSort.dir === 'desc' ? valB.localeCompare(valA) : valA.localeCompare(valB);
-                    }
+                    if (typeof valA === 'string') return sectionSort.dir === 'desc' ? valB.localeCompare(valA) : valA.localeCompare(valB);
                     return sectionSort.dir === 'desc' ? valB - valA : valA - valB;
                 });
 
@@ -784,36 +801,23 @@
                             }} className="bg-[#133054] text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-black shadow-lg">+ Novo Ativo</button>
                         </div>
 
-                        {}
                         <div className="px-8 py-6 bg-slate-50/10 border-b border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between">
                                 <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">O quanto tem investido (Custo Real)</span>
                                 <span className="text-sm sm:text-base font-black text-slate-900 mt-1">{formatBRL(totalCustoCategory)}</span>
                             </div>
-                            
                             <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between">
                                 <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">O quanto tem que ter investido (Meta)</span>
                                 <span className="text-sm sm:text-base font-black text-[#133054] mt-1">{formatBRL(totalMetasPlaneadasRs)}</span>
                             </div>
-
                             <div className={`p-4 rounded-2xl border shadow-sm flex flex-col justify-between ${
-                                saldoAporteDiferenca > 0 
-                                    ? 'bg-amber-50/60 border-amber-100 text-amber-800' 
-                                    : saldoAporteDiferenca < 0 
-                                        ? 'bg-emerald-50/60 border-emerald-100 text-emerald-800' 
-                                        : 'bg-slate-50 border-slate-100 text-slate-800'
+                                saldoAporteDiferenca > 0 ? 'bg-amber-50/60 border-amber-100 text-amber-800' : saldoAporteDiferenca < 0 ? 'bg-emerald-50/60 border-emerald-100 text-emerald-800' : 'bg-slate-50 border-slate-100 text-slate-800'
                             }`}>
                                 <span className="text-[9px] font-black uppercase tracking-wider opacity-90">Saldo de Aporte</span>
                                 <div className="flex items-center justify-between mt-1">
-                                    <span className="text-sm sm:text-base font-black">
-                                        {formatBRL(Math.abs(saldoAporteDiferenca))}
-                                    </span>
+                                    <span className="text-sm sm:text-base font-black">{formatBRL(Math.abs(saldoAporteDiferenca))}</span>
                                     <span className={`text-[8px] font-black px-2 py-0.5 rounded-lg border uppercase tracking-widest ${
-                                        saldoAporteDiferenca > 0 
-                                            ? 'bg-white border-amber-200 text-amber-700' 
-                                            : saldoAporteDiferenca < 0 
-                                                ? 'bg-white border-emerald-200 text-emerald-700' 
-                                                : 'bg-white border-slate-200 text-slate-700'
+                                        saldoAporteDiferenca > 0 ? 'bg-white border-amber-200 text-amber-700' : saldoAporteDiferenca < 0 ? 'bg-white border-emerald-200 text-emerald-700' : 'bg-white border-slate-200 text-slate-700'
                                     }`}>
                                         {saldoAporteDiferenca > 0 ? "Falta Aportar (-)" : saldoAporteDiferenca < 0 ? "Sobra / Excesso (+)" : "Alinhado"}
                                     </span>
@@ -845,7 +849,6 @@
                                             <td className="px-6 py-6 text-right font-bold text-slate-400">{formatBRL(item._custoTotal)}</td>
                                             <td className="px-6 py-6 text-right font-black text-slate-900">{formatBRL(item._metaRs)}</td>
                                             <td className="px-6 py-6 text-right font-bold">
-                                                {}
                                                 {item._metaRs === 0 && item._custoTotal === 0 ? (
                                                     <span className="text-slate-300">-</span>
                                                 ) : item._metaRs === 0 && item._custoTotal > 0 ? (
@@ -898,25 +901,64 @@
                 );
             };
 
+            // Loading / Login Screens
+            if (authLoading) {
+                return (
+                    <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50">
+                        <div className="w-12 h-12 border-4 border-[#133054] border-t-transparent rounded-full animate-spin mb-4"></div>
+                        <p className="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">A validar segurança...</p>
+                    </div>
+                );
+            }
+
+            if (!user) {
+                return (
+                    <div className="flex items-center justify-center min-h-screen bg-slate-50 p-4">
+                        <div className="bg-white p-10 rounded-[2.5rem] shadow-2xl max-w-sm w-full border border-slate-100 text-center animate-in">
+                            <div className="w-20 h-20 bg-[#133054] rounded-[1.5rem] flex items-center justify-center mx-auto mb-6 shadow-xl">
+                                <LucideIcon name="ShieldCheck" size={40} className="text-white" />
+                            </div>
+                            <h1 className="text-2xl font-black uppercase tracking-tight text-slate-900 mb-2">Icaro<span className="text-blue-600">Invest</span></h1>
+                            <p className="text-sm font-bold text-slate-400 mb-8">Por favor, faça login com a sua conta Google para aceder à sua carteira de forma segura.</p>
+                            
+                            <button 
+                                onClick={handleLogin}
+                                className="w-full bg-[#133054] text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-blue-900 transition-all shadow-lg flex justify-center items-center gap-3"
+                            >
+                                <LucideIcon name="LogIn" size={16} />
+                                Entrar com Google
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+
             return (
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-32">
                     <header className="py-10 flex flex-col md:flex-row justify-between items-center gap-8">
                         <div className="flex items-center gap-4 cursor-pointer" onClick={() => setActiveTab('dashboard')}>
-                            <img src="logo.png" alt="Logo" className="h-20 w-auto" />
+                            <div className="w-12 h-12 rounded-full overflow-hidden bg-slate-200 border-2 border-[#133054] shadow-md">
+                                {user.photoURL ? <img src={user.photoURL} alt="User" /> : <LucideIcon name="User" size={24} className="m-auto mt-3 text-slate-400" />}
+                            </div>
+                            <div>
+                                <h1 className="text-xl font-black uppercase tracking-tight text-slate-900 leading-none">Icaro<span className="text-blue-600">Invest</span></h1>
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Bem-vindo, {user.displayName || 'Investidor'}</p>
+                            </div>
                         </div>
                         <nav className="flex bg-white p-2 rounded-[1.5rem] shadow-sm border border-slate-100 overflow-x-auto no-scrollbar max-w-full">
                             {[
                                 { id: 'dashboard', icon: 'LayoutDashboard', label: 'Resumo' },
-                                { id: 'mercado', icon: 'Globe', label: 'Resumo Mercado' },
-                                { id: 'acoes', icon: 'TrendingUp', label: 'Ações / ETF' },
+                                { id: 'mercado', icon: 'Globe', label: 'Mercado' },
+                                { id: 'acoes', icon: 'TrendingUp', label: 'Ações' },
                                 { id: 'realEstate', icon: 'Home', label: 'RE' },
                                 { id: 'caixa', icon: 'Landmark', label: 'Caixa' },
                                 { id: 'alternativos', icon: 'Layers', label: 'Alt' },
                                 { id: 'movimentacoes', icon: 'ArrowLeftRight', label: 'Mov' },
                                 { id: 'dividendos', icon: 'Coins', label: 'Proventos' },
-                                { id: 'historico', icon: 'History', label: 'Histórico' }
+                                { id: 'historico', icon: 'History', label: 'Histórico' },
+                                { id: 'config', icon: 'Settings', label: 'Configurações' }
                             ].map(t => (
-                                <button key={t.id} onClick={() => setActiveTab(t.id)} className={`flex items-center gap-2 px-6 py-3 rounded-2xl text-xs font-black transition-all whitespace-nowrap ${activeTab === t.id ? 'bg-[#133054] text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}>
+                                <button key={t.id} onClick={() => setActiveTab(t.id)} className={`flex items-center gap-2 px-4 py-2.5 sm:px-6 sm:py-3 rounded-2xl text-[10px] sm:text-xs font-black transition-all whitespace-nowrap ${activeTab === t.id ? 'bg-[#133054] text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}>
                                     <LucideIcon name={t.icon} size={14} /> {t.label}
                                 </button>
                             ))}
@@ -926,9 +968,65 @@
                     {syncStatus && <div className="fixed top-10 left-1/2 -translate-x-1/2 z-50 bg-[#133054] text-white px-8 py-3 rounded-full shadow-2xl text-[10px] font-black uppercase tracking-widest animate-in">{syncStatus}</div>}
 
                     <main className="space-y-10 animate-in">
+                        {activeTab === 'config' && (
+                            <div className="space-y-10 animate-fade">
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                    <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100">
+                                        <div className="flex items-center gap-3 mb-6 border-b border-slate-100 pb-4">
+                                            <div className="bg-slate-100 p-3 rounded-xl text-slate-500"><LucideIcon name="User" size={20} /></div>
+                                            <h2 className="font-black text-[#133054] uppercase tracking-tighter text-xl">Perfil do Investidor</h2>
+                                        </div>
+                                        <div className="space-y-4 mb-8">
+                                            <div>
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Nome</p>
+                                                <p className="font-bold text-slate-900">{user.displayName || 'N/A'}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Email Autenticado</p>
+                                                <p className="font-bold text-slate-900">{user.email}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">ID de Segurança</p>
+                                                <p className="font-mono text-xs text-slate-500 bg-slate-50 p-2 rounded-lg break-all">{user.uid}</p>
+                                            </div>
+                                        </div>
+                                        <button onClick={handleLogout} className="w-full bg-rose-50 text-rose-600 border border-rose-100 py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-rose-600 hover:text-white transition-all flex items-center justify-center gap-2">
+                                            <LucideIcon name="LogOut" size={16} /> Terminar Sessão (Sair)
+                                        </button>
+                                    </div>
+
+                                    <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100">
+                                        <div className="flex items-center gap-3 mb-6 border-b border-slate-100 pb-4">
+                                            <div className="bg-emerald-100 p-3 rounded-xl text-emerald-600"><LucideIcon name="Database" size={20} /></div>
+                                            <h2 className="font-black text-[#133054] uppercase tracking-tighter text-xl">Backup e Restauração</h2>
+                                        </div>
+                                        <p className="text-sm font-bold text-slate-500 mb-8">O sistema guarda todos os dados em tempo real na cloud. Utilize as ferramentas abaixo caso pretenda fazer backups offline (ficheiro JSON) ou migrar dados para a sua conta atual.</p>
+                                        
+                                        <div className="space-y-6">
+                                            <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
+                                                <h3 className="font-black text-slate-800 uppercase tracking-widest text-[10px] mb-2">1. Exportar Dados (Backup)</h3>
+                                                <p className="text-xs text-slate-500 mb-4">Descarrega todo o seu histórico e carteira num ficheiro seguro .json.</p>
+                                                <button onClick={exportBackup} className="bg-[#133054] text-white px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-black shadow-md flex items-center justify-center gap-2 w-full transition-all">
+                                                    <LucideIcon name="DownloadCloud" size={14} /> Fazer Download do Backup
+                                                </button>
+                                            </div>
+
+                                            <div className="bg-amber-50 p-6 rounded-2xl border border-amber-100">
+                                                <h3 className="font-black text-amber-800 uppercase tracking-widest text-[10px] mb-2">2. Restaurar Dados (Importar)</h3>
+                                                <p className="text-xs text-amber-700 mb-4 opacity-80">Cuidado: O ficheiro JSON importado irá adicionar e sobrepor os dados da sua carteira atual na cloud.</p>
+                                                <label className="bg-white text-amber-600 border border-amber-200 px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-amber-600 hover:text-white shadow-sm flex items-center justify-center gap-2 w-full transition-all cursor-pointer">
+                                                    <LucideIcon name="UploadCloud" size={14} /> Selecionar Ficheiro JSON
+                                                    <input type="file" accept=".json" onChange={handleImportBackup} ref={fileInputRef} className="hidden" />
+                                                </label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         {activeTab === 'dashboard' && (
                             <div className="space-y-10 animate-fade">
-                                {/* Linha de Ativos Clássica com Variação de Dia Integrada em R$ e % */}
                                 <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
                                     <div className="glass p-3 sm:p-4 rounded-premium flex flex-col justify-between min-w-0 shadow-sm hover:shadow-md transition-all flex-1 border border-slate-100">
                                         <div className="flex items-center gap-2 sm:gap-3">
@@ -944,13 +1042,13 @@
                                         </div>
                                         <div className="flex gap-1 mt-2.5 pt-2 border-t border-slate-100/60">
                                             <button 
-                                                onClick={() => setSaldoModal({ isOpen: true, type: 'DEPOSIT', valor: '', data: new Date().toLocaleDateString('pt-BR'), descricao: 'Aporte' })}
+                                                onClick={() => setSaldoModal({ isOpen: true, type: 'DEPOSIT', valor: '', data: new Date().toLocaleDateString('pt-BR'), descricao: 'Aporte de Capital' })}
                                                 className="flex-1 py-1 text-center bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white rounded-lg text-[8px] font-black uppercase tracking-wider transition-all"
                                             >
                                                 + Depósito
                                             </button>
                                             <button 
-                                                onClick={() => setSaldoModal({ isOpen: true, type: 'WITHDRAW', valor: '', data: new Date().toLocaleDateString('pt-BR'), descricao: 'Saque' })}
+                                                onClick={() => setSaldoModal({ isOpen: true, type: 'WITHDRAW', valor: '', data: new Date().toLocaleDateString('pt-BR'), descricao: 'Resgate de Saldo' })}
                                                 className="flex-1 py-1 text-center bg-rose-50 text-rose-700 hover:bg-rose-600 hover:text-white rounded-lg text-[8px] font-black uppercase tracking-wider transition-all"
                                             >
                                                 - Saque
@@ -964,7 +1062,6 @@
                                     <StatCard isMobile={isMobile} title="Alt" value={formatBRL(totals.alt.atual)} icon="Layers" colorClass="bg-rose-500" subValue={`${totals.alt.variacaoDiaR$ >= 0 ? '+' : ''}${formatBRL(totals.alt.variacaoDiaR$)} (${totals.alt.varDiaPct >= 0 ? '+' : ''}${totals.alt.varDiaPct.toFixed(2)}%)`} />
                                 </div>
 
-                                {/* Seção Detalhada por Aba (Consolidado de Performance de Categorias) */}
                                 <div className="space-y-4">
                                     <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-4">Desempenho por Categoria (Abas)</h2>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -975,13 +1072,11 @@
                                     </div>
                                 </div>
 
-                                {/* Gráfico de Alocação e Composição */}
                                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
                                     <div className="lg:col-span-2 bg-white rounded-[2.5rem] p-10 min-h-[500px] flex flex-col shadow-sm border border-slate-100">
                                         <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-10 text-center">Alocação Total</h2>
                                         <div className="flex-1 w-full h-full">
                                             <ResponsiveContainer width="100%" height="100%">
-                                                {}
                                                 <PieChart margin={{ top: 20, right: 35, left: 35, bottom: 20 }}>
                                                     <Pie 
                                                         data={[{ name: 'Ações', value: totals.acoes.atual }, { name: 'RE', value: totals.re.atual }, { name: 'Caixa', value: totals.caixa.atual }, { name: 'Alt', value: totals.alt.atual }].filter(d => d.value > 0)} 
@@ -1250,7 +1345,74 @@
                         )}
                     </main>
 
-                    {}
+                    {/* MODAL DE SAQUE / DEPÓSITO DE SALDO LIVRE */}
+                    {saldoModal.isOpen && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in">
+                            <div className="bg-white rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl border border-slate-100 space-y-6">
+                                <div className="flex justify-between items-center">
+                                    <h3 className="text-xl font-black text-[#133054] uppercase tracking-tight">
+                                        {saldoModal.type === 'DEPOSIT' ? 'Depositar no Saldo Livre' : 'Sacar do Saldo Livre'}
+                                    </h3>
+                                    <button onClick={() => { setSaldoModal(prev => ({ ...prev, isOpen: false })); setModalError(""); }} className="text-slate-400 hover:text-slate-600 transition-colors">
+                                        <LucideIcon name="X" size={20} />
+                                    </button>
+                                </div>
+
+                                {modalError && (
+                                    <div className="p-3.5 bg-rose-50 text-rose-700 border border-rose-100 rounded-2xl text-[10px] font-black uppercase flex items-center gap-2">
+                                        <LucideIcon name="AlertCircle" size={14} className="flex-shrink-0" />
+                                        <span>{modalError}</span>
+                                    </div>
+                                )}
+
+                                <div className="space-y-4">
+                                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex justify-between items-center">
+                                        <span className="text-[10px] font-black uppercase text-slate-400">Saldo Atualmente Livre:</span>
+                                        <span className="font-black text-slate-900 text-sm">{formatBRL(totals.saldo)}</span>
+                                    </div>
+                                    
+                                    <div>
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Valor (R$)</label>
+                                        <input 
+                                            type="text" 
+                                            placeholder="0,00"
+                                            value={saldoModal.valor} 
+                                            onChange={e => setSaldoModal(prev => ({ ...prev, valor: e.target.value }))}
+                                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054] focus:bg-white transition-all text-sm text-slate-900"
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Data da Transação</label>
+                                        <input 
+                                            type="text" 
+                                            value={saldoModal.data} 
+                                            onChange={e => setSaldoModal(prev => ({ ...prev, data: e.target.value }))}
+                                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054] focus:bg-white transition-all text-sm text-slate-900"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-3 pt-4">
+                                    <button 
+                                        onClick={() => { setSaldoModal(prev => ({ ...prev, isOpen: false })); setModalError(""); }} 
+                                        className="flex-1 py-3.5 border border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-colors"
+                                    >
+                                        Cancelar
+                                    </button>
+                                    <button 
+                                        onClick={handleSaldoTransaction} 
+                                        className={`flex-1 py-3.5 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-colors ${
+                                            saldoModal.type === 'DEPOSIT' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-lg' : 'bg-rose-600 hover:bg-rose-700 shadow-lg'
+                                        }`}
+                                    >
+                                        {saldoModal.type === 'DEPOSIT' ? 'Depositar' : 'Sacar'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* MODAL PREMIUM DE EDIÇÃO DE ATIVOS */}
                     {editModal.isOpen && (
                         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in">
@@ -1333,9 +1495,7 @@
                                             </div>
                                         </>
                                     )}
-
-                                    {}
-                                    {/* Campo Unificado de Meta para Ambos os Ativos em R$ */}
+                                    
                                     <div>
                                         <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Meta de Alocação Custo Ideal (R$)</label>
                                         <input 
@@ -1366,75 +1526,6 @@
                         </div>
                     )}
 
-                    {/* MODAL DE SAQUE / DEPÓSITO DE SALDO LIVRE */}
-                    {saldoModal.isOpen && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in">
-                            <div className="bg-white rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl border border-slate-100 space-y-6">
-                                <div className="flex justify-between items-center">
-                                    <h3 className="text-xl font-black text-[#133054] uppercase tracking-tight">
-                                        {saldoModal.type === 'DEPOSIT' ? 'Depositar no Saldo Livre' : 'Sacar do Saldo Livre'}
-                                    </h3>
-                                    <button onClick={() => { setSaldoModal(prev => ({ ...prev, isOpen: false })); setModalError(""); }} className="text-slate-400 hover:text-slate-600 transition-colors">
-                                        <LucideIcon name="X" size={20} />
-                                    </button>
-                                </div>
-
-                                {modalError && (
-                                    <div className="p-3.5 bg-rose-50 text-rose-700 border border-rose-100 rounded-2xl text-[10px] font-black uppercase flex items-center gap-2">
-                                        <LucideIcon name="AlertCircle" size={14} className="flex-shrink-0" />
-                                        <span>{modalError}</span>
-                                    </div>
-                                )}
-
-                                <div className="space-y-4">
-                                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex justify-between items-center">
-                                        <span className="text-[10px] font-black uppercase text-slate-400">Saldo Atualmente Livre:</span>
-                                        <span className="font-black text-slate-900 text-sm">{formatBRL(totals.saldo)}</span>
-                                    </div>
-                                    
-                                    <div>
-                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Valor (R$)</label>
-                                        <input 
-                                            type="text" 
-                                            placeholder="0,00"
-                                            value={saldoModal.valor} 
-                                            onChange={e => setSaldoModal(prev => ({ ...prev, valor: e.target.value }))}
-                                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054] focus:bg-white transition-all text-sm text-slate-900"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Data da Transação</label>
-                                        <input 
-                                            type="text" 
-                                            value={saldoModal.data} 
-                                            onChange={e => setSaldoModal(prev => ({ ...prev, data: e.target.value }))}
-                                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054] focus:bg-white transition-all text-sm text-slate-900"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="flex gap-3 pt-4">
-                                    <button 
-                                        onClick={() => { setSaldoModal(prev => ({ ...prev, isOpen: false })); setModalError(""); }} 
-                                        className="flex-1 py-3.5 border border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-colors"
-                                    >
-                                        Cancelar
-                                    </button>
-                                    <button 
-                                        onClick={handleSaldoTransaction} 
-                                        className={`flex-1 py-3.5 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-colors ${
-                                            saldoModal.type === 'DEPOSIT' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-lg' : 'bg-rose-600 hover:bg-rose-700 shadow-lg'
-                                        }`}
-                                    >
-                                        {saldoModal.type === 'DEPOSIT' ? 'Depositar' : 'Sacar'}
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    <footer className="mt-20 py-10 text-center border-t border-slate-100 text-[10px] font-black text-slate-300 uppercase tracking-[0.5em]">IcaroInvest Elite Management v11.12</footer>
                 </div>
             );
         };
