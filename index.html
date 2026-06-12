@@ -53,7 +53,7 @@
         <div class="flex items-center justify-center min-h-screen">
             <div class="text-center">
                 <div class="w-12 h-12 border-4 border-[#133054] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">A carregar IcaroInvest Elite v11.13...</p>
+                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">A carregar IcaroInvest Elite v11.14...</p>
             </div>
         </div>
     </div>
@@ -69,8 +69,8 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
         import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
-        // Importações de Auth alteradas para Google Auth
-        import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
+        // Importações de Auth alteradas para Email e Senha
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBy8hqZtXZO6CsK45INpunruxbZtdbxJx4",
@@ -84,7 +84,7 @@
             const app = initializeApp(firebaseConfig);
             const db = getFirestore(app);
             const auth = getAuth(app);
-            window.firebaseAPI = { db, doc, setDoc, onSnapshot, auth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, signInAnonymously };
+            window.firebaseAPI = { db, doc, setDoc, onSnapshot, auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged };
         } catch (e) { console.error("Firebase Fail:", e); }
     </script>
 
@@ -222,6 +222,11 @@
             const [user, setUser] = useState(null);
             const [authLoading, setAuthLoading] = useState(true);
             const [loginError, setLoginError] = useState("");
+            
+            // Login Forms State
+            const [email, setEmail] = useState("");
+            const [password, setPassword] = useState("");
+            const [isRegistering, setIsRegistering] = useState(false);
 
             // Core State
             const [activeTab, setActiveTab] = useState('dashboard');
@@ -294,31 +299,37 @@
                 if (activeTab === 'mercado') fetchMarketMovers();
             }, [activeTab]);
 
-            // Funções de Autenticação e Restauração
-            const handleLogin = async () => {
-                const { auth, GoogleAuthProvider, signInWithPopup } = window.firebaseAPI;
-                const provider = new GoogleAuthProvider();
-                try {
-                    setLoginError("");
-                    await signInWithPopup(auth, provider);
-                } catch (error) {
-                    console.error("Login failed:", error);
-                    if (error.code === 'auth/unauthorized-domain' || error.message.includes('unauthorized-domain')) {
-                        setLoginError("O domínio atual (Canvas) não está autorizado no seu Firebase para login com Google. Para testar agora, use a opção 'Entrar Anonimamente' ou hospede o ficheiro no seu próprio servidor.");
-                    } else {
-                        setLoginError("Erro no Login: " + error.message);
-                    }
+            // Funções de Autenticação com Email e Senha
+            const handleEmailAuth = async (e) => {
+                e.preventDefault();
+                const { auth, signInWithEmailAndPassword, createUserWithEmailAndPassword } = window.firebaseAPI;
+                setLoginError("");
+                
+                if (!email || !password) {
+                    setLoginError("Por favor, preencha o email e a senha.");
+                    return;
                 }
-            };
 
-            const handleAnonymousLogin = async () => {
-                const { auth, signInAnonymously } = window.firebaseAPI;
                 try {
-                    setLoginError("");
-                    await signInAnonymously(auth);
+                    if (isRegistering) {
+                        await createUserWithEmailAndPassword(auth, email, password);
+                    } else {
+                        await signInWithEmailAndPassword(auth, email, password);
+                    }
                 } catch (error) {
-                    console.error("Anon Login failed:", error);
-                    setLoginError("Erro no Login Anônimo: " + error.message);
+                    console.error("Auth error:", error);
+                    // Tratamento de mensagens de erro comuns do Firebase para Português
+                    if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
+                        setLoginError("Credenciais inválidas. Verifique o seu email e senha.");
+                    } else if (error.code === 'auth/email-already-in-use') {
+                        setLoginError("Este email já está registado. Tente fazer login.");
+                    } else if (error.code === 'auth/weak-password') {
+                        setLoginError("A senha é muito fraca. Deve ter pelo menos 6 caracteres.");
+                    } else if (error.code === 'auth/invalid-email') {
+                        setLoginError("O formato do email é inválido.");
+                    } else {
+                        setLoginError("Erro na autenticação: " + error.message);
+                    }
                 }
             };
 
@@ -936,7 +947,9 @@
                                 <LucideIcon name="ShieldCheck" size={40} className="text-white" />
                             </div>
                             <h1 className="text-2xl font-black uppercase tracking-tight text-slate-900 mb-2">Icaro<span className="text-blue-600">Invest</span></h1>
-                            <p className="text-sm font-bold text-slate-400 mb-6">Por favor, faça login com a sua conta Google para aceder à sua carteira de forma segura.</p>
+                            <p className="text-sm font-bold text-slate-400 mb-6">
+                                {isRegistering ? "Crie uma nova conta segura para começar." : "Aceda à sua carteira de forma segura."}
+                            </p>
                             
                             {loginError && (
                                 <div className="mb-6 p-3.5 bg-rose-50 text-rose-700 border border-rose-100 rounded-2xl text-[10px] font-black uppercase tracking-wide text-left leading-relaxed">
@@ -944,20 +957,42 @@
                                 </div>
                             )}
                             
-                            <div className="space-y-3">
+                            <form onSubmit={handleEmailAuth} className="space-y-4">
+                                <div>
+                                    <input 
+                                        type="email" 
+                                        placeholder="O seu Email"
+                                        value={email}
+                                        onChange={e => setEmail(e.target.value)}
+                                        className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold outline-none focus:border-[#133054] focus:bg-white transition-all text-sm text-slate-900 text-left"
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <input 
+                                        type="password" 
+                                        placeholder="A sua Senha"
+                                        value={password}
+                                        onChange={e => setPassword(e.target.value)}
+                                        className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold outline-none focus:border-[#133054] focus:bg-white transition-all text-sm text-slate-900 text-left"
+                                        required
+                                    />
+                                </div>
                                 <button 
-                                    onClick={handleLogin}
+                                    type="submit"
                                     className="w-full bg-[#133054] text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-blue-900 transition-all shadow-lg flex justify-center items-center gap-3"
                                 >
-                                    <LucideIcon name="LogIn" size={16} />
-                                    Entrar com Google
+                                    <LucideIcon name={isRegistering ? "UserPlus" : "LogIn"} size={16} />
+                                    {isRegistering ? "Registar Conta" : "Entrar no Sistema"}
                                 </button>
+                            </form>
+
+                            <div className="mt-6 text-center">
                                 <button 
-                                    onClick={handleAnonymousLogin}
-                                    className="w-full bg-slate-100 text-slate-600 py-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-slate-200 transition-all flex justify-center items-center gap-3"
+                                    onClick={() => { setIsRegistering(!isRegistering); setLoginError(""); }}
+                                    className="text-[10px] font-black uppercase text-slate-400 hover:text-[#133054] tracking-widest transition-colors"
                                 >
-                                    <LucideIcon name="User" size={16} />
-                                    Entrar Anonimamente (Teste)
+                                    {isRegistering ? "Já tem conta? Fazer Login" : "Não tem conta? Registar agora"}
                                 </button>
                             </div>
                         </div>
@@ -969,12 +1004,12 @@
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-32">
                     <header className="py-10 flex flex-col md:flex-row justify-between items-center gap-8">
                         <div className="flex items-center gap-4 cursor-pointer" onClick={() => setActiveTab('dashboard')}>
-                            <div className="w-12 h-12 rounded-full overflow-hidden bg-slate-200 border-2 border-[#133054] shadow-md">
-                                {user.photoURL ? <img src={user.photoURL} alt="User" /> : <LucideIcon name="User" size={24} className="m-auto mt-3 text-slate-400" />}
+                            <div className="w-12 h-12 rounded-full overflow-hidden bg-slate-200 border-2 border-[#133054] shadow-md flex items-center justify-center">
+                                {user.photoURL ? <img src={user.photoURL} alt="User" className="w-full h-full object-cover" /> : <LucideIcon name="User" size={24} className="text-slate-400" />}
                             </div>
                             <div>
                                 <h1 className="text-xl font-black uppercase tracking-tight text-slate-900 leading-none">Icaro<span className="text-blue-600">Invest</span></h1>
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Bem-vindo, {user.displayName || 'Investidor'}</p>
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Bem-vindo, {user.displayName || user.email}</p>
                             </div>
                         </div>
                         <nav className="flex bg-white p-2 rounded-[1.5rem] shadow-sm border border-slate-100 overflow-x-auto no-scrollbar max-w-full">
