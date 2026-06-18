@@ -38,27 +38,19 @@
         .custom-scroll::-webkit-scrollbar { height: 4px; width: 4px; }
         .custom-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 10px; }
         
-        .btn-primary { background-color: var(--primary); color: white; }
-        .btn-primary:hover { background-color: #0d223d; }
-        .text-brand { color: var(--primary); }
-        .text-gold { color: var(--accent); }
-        .cursor-pointer { cursor: pointer; }
-        
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .spin { animation: spin 1s linear infinite; }
     </style>
 </head>
 <body>
     <div id="root">
-        <div class="flex items-center justify-center min-h-screen">
-            <div class="text-center">
-                <div class="w-12 h-12 border-4 border-[#133054] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">A carregar IcaroInvest Elite v11.16...</p>
-            </div>
+        <div class="flex flex-col items-center justify-center min-h-screen">
+            <div class="w-12 h-12 border-4 border-[#133054] border-t-transparent rounded-full animate-spin mb-4"></div>
+            <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">A carregar IcaroInvest Elite v11.20...</p>
         </div>
     </div>
 
-    <!-- Bibliotecas -->
+    <!-- Bibliotecas React e Gráficos -->
     <script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
@@ -66,12 +58,13 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
-        // ADICIONADO: getDoc na linha abaixo para permitir a migração
-        import { getFirestore, doc, setDoc, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
-        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
+    <!-- Firebase Compat Libraries -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
 
+    <!-- Script de Inicialização do Firebase -->
+    <script>
         const firebaseConfig = {
             apiKey: "AIzaSyBy8hqZtXZO6CsK45INpunruxbZtdbxJx4",
             authDomain: "icaro-investimentos.firebaseapp.com",
@@ -80,42 +73,46 @@
             appId: "1:45341061429:web:85b89c414110de4c4e9c7c"
         };
 
-        try {
-            const app = initializeApp(firebaseConfig);
-            const db = getFirestore(app);
-            const auth = getAuth(app);
-            // ADICIONADO: getDoc nas exportações
-            window.firebaseAPI = { db, doc, setDoc, getDoc, onSnapshot, auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged };
-        } catch (e) { console.error("Firebase Fail:", e); }
+        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+
+        const wrapSnap = (snap) => ({ exists: () => snap.exists, data: () => snap.data() });
+
+        window.firebaseAPI = {
+            db: db, auth: auth,
+            doc: (dbInstance, col, id) => dbInstance.collection(col).doc(id),
+            setDoc: (ref, data) => ref.set(data),
+            getDoc: async (ref) => wrapSnap(await ref.get()),
+            onSnapshot: (ref, cb, errCb) => ref.onSnapshot(snap => cb(wrapSnap(snap)), errCb),
+            signInWithEmailAndPassword: (authInstance, e, p) => authInstance.signInWithEmailAndPassword(e, p),
+            createUserWithEmailAndPassword: (authInstance, e, p) => authInstance.createUserWithEmailAndPassword(e, p),
+            signOut: (authInstance) => authInstance.signOut(),
+            onAuthStateChanged: (authInstance, cb) => authInstance.onAuthStateChanged(cb)
+        };
+        
+        window.dispatchEvent(new Event('firebase-loaded'));
     </script>
 
     <script type="text/babel">
         const { useState, useEffect, useMemo, useRef } = React;
-        const { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } = window.Recharts;
+        const { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } = window.Recharts;
 
         const BRAPI_TOKEN = "pZapqBJxy1rE4pq3g4vy69";
         const COLORS = ['#133054', '#bfa260', '#10b981', '#64748b', '#f43f5e', '#f59e0b'];
-        
-        // Ativos ignorados globalmente
         const EXCLUDED_TICKERS = ['CHAINLINK', 'PENDLE'];
 
         const parseValue = (val) => {
             if (val === null || val === undefined || val === '') return 0;
             if (typeof val === 'number') return val;
             let clean = val.toString().trim();
-            
-            if (clean.includes(',')) {
-                let ptClean = clean.replace(/\./g, '').replace(',', '.');
-                return parseFloat(ptClean) || 0;
-            }
+            if (clean.includes(',')) return parseFloat(clean.replace(/\./g, '').replace(',', '.')) || 0;
             if (clean.includes('.')) {
                 const pointsCount = (clean.match(/\./g) || []).length;
                 if (pointsCount > 1) return parseFloat(clean.replace(/\./g, '')) || 0;
                 if (clean.startsWith('0.')) return parseFloat(clean) || 0;
                 const parts = clean.split('.');
-                if (parts[1] && parts[1].length === 3 && parseInt(parts[0]) > 9) {
-                    return parseFloat(clean.replace(/\./g, '')) || 0;
-                }
+                if (parts[1] && parts[1].length === 3 && parseInt(parts[0]) > 9) return parseFloat(clean.replace(/\./g, '')) || 0;
             }
             return parseFloat(clean) || 0;
         };
@@ -124,7 +121,7 @@
 
         const LucideIcon = ({ name, size = 20, className = "" }) => {
             const [ready, setReady] = useState(false);
-            useEffect(() => { if (window.lucide) { setReady(true); window.lucide.createIcons(); } }, [name]);
+            useEffect(() => { if (window.lucide) { setReady(true); window.lucide.createIcons(); } }, [name, ready]);
             return ready ? <i data-lucide={name} style={{ width: size, height: size }} className={className}></i> : <div style={{ width: size, height: size }}></div>;
         };
 
@@ -188,13 +185,11 @@
                         <span className="font-black text-[10px] sm:text-xs uppercase text-slate-700 tracking-wider truncate">{title}</span>
                     </div>
                 </div>
-                
                 <div className="space-y-4 min-w-0">
                     <div>
                         <span className="text-[8px] sm:text-[9px] font-bold text-slate-400 uppercase tracking-wider block">Património Atual</span>
                         <span className="text-base sm:text-lg md:text-xl lg:text-2xl font-black text-slate-950 truncate block tabular">{formatBRL(stats.atual)}</span>
                     </div>
-                    
                     <div className="grid grid-cols-2 gap-2 pt-3 border-t border-slate-100 min-w-0">
                         <div className="min-w-0">
                             <span className="text-[8px] sm:text-[9px] font-bold text-slate-400 uppercase tracking-wider block truncate">Custo / Aplicado</span>
@@ -207,7 +202,6 @@
                             </span>
                         </div>
                     </div>
-
                     <div className="pt-3 border-t border-slate-100 flex justify-between items-center min-w-0">
                         <span className="text-[8px] sm:text-[9px] font-bold text-slate-400 uppercase tracking-wider truncate mr-1">Variação Diária</span>
                         <span className={`text-[10px] sm:text-xs font-black tabular px-2 py-0.5 rounded-lg flex-shrink-0 ${stats.variacaoDiaR$ >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
@@ -219,30 +213,22 @@
         );
 
         const App = () => {
-            // Auth State
             const [user, setUser] = useState(null);
             const [authLoading, setAuthLoading] = useState(true);
             const [loginError, setLoginError] = useState("");
             
-            // Login Forms State
             const [email, setEmail] = useState("");
             const [password, setPassword] = useState("");
             const [isRegistering, setIsRegistering] = useState(false);
 
-            // Core State
             const [activeTab, setActiveTab] = useState('dashboard');
             const [investments, setInvestments] = useState({ 
                 acoes: [], realEstate: [], caixa: [], alternativos: [],
                 caixaTicker: [], altFunds: [], altStocks: [], altCrypto: [], dividendos: [],
-                historico: [], movimentacoes: [],
-                saldoDisponivel: 0
+                historico: [], movimentacoes: [], saldoDisponivel: 0
             });
-            const [syncStatus, setSyncStatus] = useState("");
             
-            const [saldoModal, setSaldoModal] = useState({
-                isOpen: false, type: 'WITHDRAW', valor: '', data: new Date().toLocaleDateString('pt-BR'), descricao: ''
-            });
-            const [modalError, setModalError] = useState("");
+            const [syncStatus, setSyncStatus] = useState("");
             const [globalSyncing, setGlobalSyncing] = useState(false);
             const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
             
@@ -253,40 +239,44 @@
 
             const fileInputRef = useRef(null);
 
-            const [editModal, setEditModal] = useState({
-                isOpen: false, cat: '', type: '', item: null, ticker: '', nome: '',
-                quantidade: '', precoMedio: '', precoAtual: '', valorAplicado: '', valorAtual: '', metaRs: ''
-            });
+            // Modais Premium v11.20
+            const [editModal, setEditModal] = useState({ isOpen: false, cat: '', type: '', item: null, ticker: '', nome: '', quantidade: '', precoMedio: '', precoAtual: '', valorAplicado: '', valorAtual: '', metaRs: '' });
+            const [saldoModal, setSaldoModal] = useState({ isOpen: false, type: 'WITHDRAW', valor: '', data: new Date().toLocaleDateString('pt-BR'), descricao: '' });
+            const [newAssetModal, setNewAssetModal] = useState({ isOpen: false, cat: '', type: '' });
+            const [tradeModal, setTradeModal] = useState({ isOpen: false, cat: '', item: null, type: '', operation: '' });
+            const [proventoModal, setProventoModal] = useState({ isOpen: false, ativo: '' });
+            const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, message: '', onConfirm: null });
+            const [alertDialog, setAlertDialog] = useState({ isOpen: false, message: '' });
+
+            const showAlert = (message) => setAlertDialog({ isOpen: true, message });
 
             useEffect(() => {
-                if (!window.firebaseAPI) {
-                    setAuthLoading(false);
-                    return;
+                const setupAuth = () => {
+                    const { auth, onAuthStateChanged, db, doc, onSnapshot, setDoc } = window.firebaseAPI;
+                    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+                        setUser(currentUser);
+                        setAuthLoading(false);
+                        if (currentUser) {
+                            onSnapshot(doc(db, 'users', currentUser.uid), (snap) => {
+                                if (snap.exists()) setInvestments(prevState => ({...prevState, ...snap.data()}));
+                                else {
+                                    const initialData = { acoes: [], realEstate: [], caixa: [], alternativos: [], caixaTicker: [], altFunds: [], altStocks: [], altCrypto: [], dividendos: [], historico: [], movimentacoes: [], saldoDisponivel: 0 };
+                                    setDoc(doc(db, 'users', currentUser.uid), initialData);
+                                    setInvestments(initialData);
+                                }
+                            });
+                        }
+                    });
+                    window.authUnsubscribe = unsubscribe;
+                };
+
+                if (window.firebaseAPI) setupAuth();
+                else {
+                    const handleFirebaseLoaded = () => setupAuth();
+                    window.addEventListener('firebase-loaded', handleFirebaseLoaded);
+                    return () => window.removeEventListener('firebase-loaded', handleFirebaseLoaded);
                 }
-                const { auth, onAuthStateChanged, db, doc, onSnapshot, setDoc } = window.firebaseAPI;
-                
-                const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-                    setUser(currentUser);
-                    setAuthLoading(false);
-                    
-                    if (currentUser) {
-                        onSnapshot(doc(db, 'users', currentUser.uid), (snap) => {
-                            if (snap.exists()) {
-                                setInvestments(prevState => ({...prevState, ...snap.data()}));
-                            } else {
-                                // Conta nova - cria a estrutura padrão base
-                                const initialData = {
-                                    acoes: [], realEstate: [], caixa: [], alternativos: [],
-                                    caixaTicker: [], altFunds: [], altStocks: [], altCrypto: [], dividendos: [],
-                                    historico: [], movimentacoes: [], saldoDisponivel: 0
-                                };
-                                setDoc(doc(db, 'users', currentUser.uid), initialData);
-                                setInvestments(initialData);
-                            }
-                        });
-                    }
-                });
-                return () => unsubscribe();
+                return () => { if (window.authUnsubscribe) window.authUnsubscribe(); };
             }, []);
 
             useEffect(() => {
@@ -295,49 +285,29 @@
                 return () => window.removeEventListener('resize', handleResize);
             }, []);
 
-            useEffect(() => {
-                if (activeTab === 'mercado') fetchMarketMovers();
-            }, [activeTab]);
+            useEffect(() => { if (activeTab === 'mercado') fetchMarketMovers(); }, [activeTab]);
 
             const handleEmailAuth = async (e) => {
                 e.preventDefault();
-                const { auth, signInWithEmailAndPassword, createUserWithEmailAndPassword } = window.firebaseAPI;
                 setLoginError("");
-                
-                if (!email || !password) {
-                    setLoginError("Por favor, preencha o email e a senha.");
-                    return;
-                }
-
+                if (!email || !password) { setLoginError("Por favor, preencha o email e a senha."); return; }
+                const { auth, signInWithEmailAndPassword, createUserWithEmailAndPassword } = window.firebaseAPI;
                 try {
-                    if (isRegistering) {
-                        await createUserWithEmailAndPassword(auth, email, password);
-                    } else {
-                        await signInWithEmailAndPassword(auth, email, password);
-                    }
+                    if (isRegistering) await createUserWithEmailAndPassword(auth, email, password);
+                    else await signInWithEmailAndPassword(auth, email, password);
                 } catch (error) {
-                    console.error("Auth error:", error);
-                    if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
-                        setLoginError("Credenciais inválidas. Verifique o seu email e senha.");
-                    } else if (error.code === 'auth/email-already-in-use') {
-                        setLoginError("Este email já está registado. Tente fazer login.");
-                    } else if (error.code === 'auth/weak-password') {
-                        setLoginError("A senha é muito fraca. Deve ter pelo menos 6 caracteres.");
-                    } else if (error.code === 'auth/invalid-email') {
-                        setLoginError("O formato do email é inválido.");
-                    } else {
-                        setLoginError("Erro na autenticação: " + error.message);
-                    }
+                    if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') setLoginError("Credenciais inválidas.");
+                    else if (error.code === 'auth/email-already-in-use') setLoginError("Email já registado. Faça login.");
+                    else if (error.code === 'auth/weak-password') setLoginError("Senha muito fraca.");
+                    else setLoginError("Erro: " + error.message);
                 }
             };
 
-            const handleLogout = async () => {
-                const { auth, signOut } = window.firebaseAPI;
-                try {
-                    await signOut(auth);
-                } catch (error) {
-                    console.error("Logout failed:", error);
-                }
+            const handleLogout = async () => { try { await window.firebaseAPI.signOut(window.firebaseAPI.auth); } catch (error) { console.error(error); } };
+
+            const save = async (newData) => {
+                if (!user) return;
+                await window.firebaseAPI.setDoc(window.firebaseAPI.doc(window.firebaseAPI.db, 'users', user.uid), newData);
             };
 
             const exportBackup = () => {
@@ -346,69 +316,48 @@
                 downloadAnchorNode.setAttribute("href", dataStr);
                 downloadAnchorNode.setAttribute("download", `icaroinvest-backup-${new Date().toISOString().slice(0,10)}.json`);
                 document.body.appendChild(downloadAnchorNode);
-                downloadAnchorNode.click();
-                downloadAnchorNode.remove();
-                setSyncStatus("Backup exportado com sucesso!");
-                setTimeout(() => setSyncStatus(""), 3000);
+                downloadAnchorNode.click(); downloadAnchorNode.remove();
+                setSyncStatus("Backup exportado!"); setTimeout(() => setSyncStatus(""), 3000);
             };
 
             const handleImportBackup = (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
+                const file = e.target.files[0]; if (!file) return;
                 const reader = new FileReader();
                 reader.onload = async (event) => {
                     try {
                         const parsed = JSON.parse(event.target.result);
                         if (parsed && typeof parsed === 'object') {
                             const next = { ...investments, ...parsed };
-                            setInvestments(next);
-                            await save(next);
-                            setSyncStatus("Dados restaurados com sucesso!");
-                            setTimeout(() => setSyncStatus(""), 3000);
+                            setInvestments(next); await save(next);
+                            setSyncStatus("Dados restaurados!"); setTimeout(() => setSyncStatus(""), 3000);
                         }
-                    } catch (err) {
-                        alert("Erro ao ler o ficheiro de backup. Certifique-se de que é um ficheiro JSON válido.");
-                    }
+                    } catch (err) { showAlert("Erro ao ler backup."); }
                 };
                 reader.readAsText(file);
                 if (fileInputRef.current) fileInputRef.current.value = "";
             };
 
-            // NOVA FUNÇÃO: Migrar dados antigos
             const handleMigrateOldData = async () => {
-                if (!user || !window.firebaseAPI) return;
-                const confirmMigrate = window.confirm("Isto vai puxar os dados antigos de 'portfolio_principal' e adicioná-los à sua conta atual. Deseja continuar?");
-                if (!confirmMigrate) return;
-
-                try {
-                    setSyncStatus("A importar dados antigos...");
-                    const { db, doc, getDoc, setDoc } = window.firebaseAPI;
-                    
-                    const oldDocRef = doc(db, 'investments', 'portfolio_principal');
-                    const oldDocSnap = await getDoc(oldDocRef);
-
-                    if (oldDocSnap.exists()) {
-                        const oldData = oldDocSnap.data();
-                        const next = { ...investments, ...oldData }; 
-                        setInvestments(next);
-                        await setDoc(doc(db, 'users', user.uid), next);
-                        setSyncStatus("Migração concluída com sucesso!");
-                    } else {
-                        alert("Não foram encontrados dados no 'portfolio_principal'.");
-                        setSyncStatus("");
+                setConfirmDialog({
+                    isOpen: true,
+                    message: "Puxar os dados de 'portfolio_principal' para a sua conta atual?",
+                    onConfirm: async () => {
+                        setConfirmDialog({ isOpen: false });
+                        if (!user) return;
+                        try {
+                            setSyncStatus("A importar...");
+                            const { db, doc, getDoc, setDoc } = window.firebaseAPI;
+                            const oldDocRef = doc(db, 'investments', 'portfolio_principal');
+                            const oldDocSnap = await getDoc(oldDocRef);
+                            if (oldDocSnap.exists()) {
+                                const next = { ...investments, ...oldDocSnap.data() }; 
+                                setInvestments(next); await save(next);
+                                setSyncStatus("Migração concluída!");
+                            } else { showAlert("Dados antigos não encontrados."); setSyncStatus(""); }
+                        } catch (error) { showAlert("Erro ao migrar: " + error.message); setSyncStatus(""); }
+                        setTimeout(() => setSyncStatus(""), 3000);
                     }
-                } catch (error) {
-                    console.error("Erro na migração:", error);
-                    alert("Erro ao migrar: " + error.message);
-                    setSyncStatus("");
-                }
-                setTimeout(() => setSyncStatus(""), 3000);
-            };
-
-            const save = async (newData) => {
-                if (!window.firebaseAPI || !user) return;
-                const { db, doc, setDoc } = window.firebaseAPI;
-                await setDoc(doc(db, 'users', user.uid), newData);
+                });
             };
 
             const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, index, name, value }) => {
@@ -423,7 +372,6 @@
                 const ex = mx + (cos >= 0 ? 1 : -1) * connectorLength;
                 const ey = my;
                 const textAnchor = cos >= 0 ? 'start' : 'end';
-                
                 const tx = ex + (cos >= 0 ? 6 : -6);
                 const ty = ey;
 
@@ -457,10 +405,8 @@
 
             const registrarMovimentacao = (data, ativo, tipo, qtd, valorUnit) => ({
                 id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-                data: data || new Date().toLocaleDateString('pt-BR'),
-                ativo: ativo.toUpperCase(), tipo,
-                quantidade: parseValue(qtd), valorUnitario: parseValue(valorUnit),
-                valorTotal: parseValue(qtd) * parseValue(valorUnit)
+                data: data || new Date().toLocaleDateString('pt-BR'), ativo: ativo.toUpperCase(), tipo,
+                quantidade: parseValue(qtd), valorUnitario: parseValue(valorUnit), valorTotal: parseValue(qtd) * parseValue(valorUnit)
             });
 
             const getSectionStats = (list, type = 'ticker') => {
@@ -471,10 +417,7 @@
                     atual = filteredList.reduce((acc, i) => acc + (parseValue(i.quantidade) * parseValue(i.precoAtual)), 0);
                     filteredList.forEach(i => {
                         const qty = parseValue(i.quantidade); const cur = parseValue(i.precoAtual); const varPct = parseValue(i.variacaoDia);
-                        if (varPct !== 0) {
-                            const prevPrice = cur / (1 + (varPct / 100));
-                            variacaoDiaR$ += (cur - prevPrice) * qty;
-                        }
+                        if (varPct !== 0) { const prevPrice = cur / (1 + (varPct / 100)); variacaoDiaR$ += (cur - prevPrice) * qty; }
                     });
                 } else {
                     investido = filteredList.reduce((acc, i) => acc + parseValue(i.valorAplicado), 0);
@@ -498,89 +441,42 @@
                 const divsPendentes = (investments.dividendos || []).filter(d => d.status === 'pendente' && !EXCLUDED_TICKERS.includes(d.ativo.toUpperCase())).reduce((acc, b) => acc + parseValue(b.valor || 0), 0);
                 const saldo = parseValue(investments.saldoDisponivel);
                 
-                const acoes = sAcoes; 
-                const re = sRE;
-                
-                const caixa = { 
-                    investido: sCaixaM.investido + sCaixaT.investido, 
-                    atual: sCaixaM.atual + sCaixaT.atual + saldo, 
-                    lucro: sCaixaM.lucro + sCaixaT.lucro, 
-                    variacaoDiaR$: sCaixaT.variacaoDiaR$ 
-                };
+                const caixa = { investido: sCaixaM.investido + sCaixaT.investido, atual: sCaixaM.atual + sCaixaT.atual + saldo, lucro: sCaixaM.lucro + sCaixaT.lucro, variacaoDiaR$: sCaixaT.variacaoDiaR$ };
                 caixa.lucroPct = caixa.investido > 0 ? (caixa.lucro / caixa.investido) * 100 : 0;
                 const prevCaixaActual = (caixa.atual - saldo) - caixa.variacaoDiaR$;
                 caixa.varDiaPct = prevCaixaActual !== 0 ? (caixa.variacaoDiaR$ / prevCaixaActual) * 100 : 0;
                 
-                const alt = { 
-                    investido: sAltF.investido + sAltS.investido + sAltC.investido, 
-                    atual: sAltF.atual + sAltS.atual + sAltC.atual, 
-                    lucro: sAltF.lucro + sAltS.lucro + sAltC.lucro, 
-                    variacaoDiaR$: sAltS.variacaoDiaR$ + sAltC.variacaoDiaR$ 
-                };
+                const alt = { investido: sAltF.investido + sAltS.investido + sAltC.investido, atual: sAltF.atual + sAltS.atual + sAltC.atual, lucro: sAltF.lucro + sAltS.lucro + sAltC.lucro, variacaoDiaR$: sAltS.variacaoDiaR$ + sAltC.variacaoDiaR$ };
                 alt.lucroPct = alt.investido > 0 ? (alt.lucro / alt.investido) * 100 : 0;
                 const prevAltActual = alt.atual - alt.variacaoDiaR$;
                 alt.varDiaPct = prevAltActual !== 0 ? (alt.variacaoDiaR$ / prevAltActual) * 100 : 0;
                 
-                const totalAtu = acoes.atual + re.atual + caixa.atual + alt.atual;
-                const varDiaTotal = acoes.variacaoDiaR$ + re.variacaoDiaR$ + caixa.variacaoDiaR$ + alt.variacaoDiaR$ ;
+                const totalAtu = sAcoes.atual + sRE.atual + caixa.atual + alt.atual;
+                const varDiaTotal = sAcoes.variacaoDiaR$ + sRE.variacaoDiaR$ + caixa.variacaoDiaR$ + alt.variacaoDiaR$ ;
                 const prevTotal = totalAtu - varDiaTotal;
                 const varDiaTotalPct = prevTotal !== 0 ? (varDiaTotal / prevTotal) * 100 : 0;
                 
-                return { acoes, re, caixa, alt, divsPagos, divsPendentes, total: totalAtu, varDiaTotal, varDiaTotalPct, saldo };
+                return { acoes: sAcoes, re: sRE, caixa, alt, divsPagos, divsPendentes, total: totalAtu, varDiaTotal, varDiaTotalPct, saldo };
             }, [investments]);
 
             const marketPortfolioList = useMemo(() => {
-                const combined = [
-                    ...(investments.acoes || []),
-                    ...(investments.realEstate || []),
-                    ...(investments.caixaTicker || []),
-                    ...(investments.altStocks || []),
-                    ...(investments.altCrypto || [])
-                ].filter(item => !EXCLUDED_TICKERS.includes((item.ticker || "").toUpperCase()));
+                const combined = [...(investments.acoes || []), ...(investments.realEstate || []), ...(investments.caixaTicker || []), ...(investments.altStocks || []), ...(investments.altCrypto || [])].filter(item => !EXCLUDED_TICKERS.includes((item.ticker || "").toUpperCase()));
                 const list = combined.map(item => {
-                    const q = parseValue(item.quantidade);
-                    const cur = parseValue(item.precoAtual);
-                    const varPct = parseValue(item.variacaoDia);
-                    const pat = q * cur;
-                    const custo = q * parseValue(item.precoMedio);
-                    
-                    let varR = 0;
-                    if (varPct !== 0) {
-                        const prevP = cur / (1 + (varPct / 100));
-                        varR = (cur - prevP) * q;
-                    }
-
-                    return { 
-                        ativo: item.ticker, 
-                        qtd: q, 
-                        custo: custo, 
-                        atual: cur, 
-                        varDia: varPct,
-                        varDiaR$: varR,
-                        patrimonio: pat, 
-                        lucro: pat - custo 
-                    };
+                    const q = parseValue(item.quantidade); const cur = parseValue(item.precoAtual); const varPct = parseValue(item.variacaoDia);
+                    const pat = q * cur; const custo = q * parseValue(item.precoMedio);
+                    let varR = 0; if (varPct !== 0) { const prevP = cur / (1 + (varPct / 100)); varR = (cur - prevP) * q; }
+                    return { ativo: item.ticker, qtd: q, custo: custo, atual: cur, varDia: varPct, varDiaR$: varR, patrimonio: pat, lucro: pat - custo };
                 });
-                return list.sort((a, b) => {
-                    const valA = a[marketSort.key]; const valB = b[marketSort.key];
-                    return marketSort.dir === 'desc' ? valB - valA : valA - valB;
-                });
+                return list.sort((a, b) => { const valA = a[marketSort.key]; const valB = b[marketSort.key]; return marketSort.dir === 'desc' ? valB - valA : valA - valB; });
             }, [investments, marketSort]);
 
             const handleMarketSort = (key) => setMarketSort(prev => ({ key, dir: prev.key === key && prev.dir === 'desc' ? 'asc' : 'desc' }));
             const handleSectionSort = (key) => setSectionSort(prev => ({ key, dir: prev.key === key && prev.dir === 'desc' ? 'asc' : 'desc' }));
 
             const syncGlobalPortfolio = async () => {
-                const categories = [
-                    { name: 'acoes', isCrypto: false },
-                    { name: 'realEstate', isCrypto: false },
-                    { name: 'caixaTicker', isCrypto: false },
-                    { name: 'altStocks', isCrypto: false }
-                ];
-                
+                const categories = [ { name: 'acoes', isCrypto: false }, { name: 'realEstate', isCrypto: false }, { name: 'caixaTicker', isCrypto: false }, { name: 'altStocks', isCrypto: false } ];
                 setGlobalSyncing(true); setSyncStatus("Sincronização Total B3...");
                 let updatedInvestments = { ...investments };
-                
                 for (const catObj of categories) {
                     const list = [...(updatedInvestments[catObj.name] || [])];
                     if (list.length === 0) continue;
@@ -590,23 +486,12 @@
                         try {
                             let url = `https://brapi.dev/api/quote/${t}?token=${BRAPI_TOKEN}`;
                             const isCryptoAsset = catObj.isCrypto || t === 'BTC' || t === 'ETH' || t.includes('BTC') || t.includes('ETH');
-                            
-                            if (isCryptoAsset) {
-                                url = `https://brapi.dev/api/v2/crypto?coin=${t}&currency=BRL&token=${BRAPI_TOKEN}`;
-                            }
-                            
-                            const res = await fetch(url); 
-                            const d = await res.json();
-                            
-                            if (isCryptoAsset && d.coins?.[0]) {
-                                list[i].precoAtual = d.coins[0].regularMarketPrice; 
-                                list[i].variacaoDia = d.coins[0].regularMarketChangePercent;
-                            } else if (d.results?.[0]) { 
-                                list[i].precoAtual = d.results[0].regularMarketPrice; 
-                                list[i].variacaoDia = d.results[0].regularMarketChangePercent; 
-                            }
+                            if (isCryptoAsset) url = `https://brapi.dev/api/v2/crypto?coin=${t}&currency=BRL&token=${BRAPI_TOKEN}`;
+                            const res = await fetch(url); const d = await res.json();
+                            if (isCryptoAsset && d.coins?.[0]) { list[i].precoAtual = d.coins[0].regularMarketPrice; list[i].variacaoDia = d.coins[0].regularMarketChangePercent; } 
+                            else if (d.results?.[0]) { list[i].precoAtual = d.results[0].regularMarketPrice; list[i].variacaoDia = d.results[0].regularMarketChangePercent; }
                             await new Promise(r => setTimeout(r, 400));
-                        } catch (e) { console.error(e); }
+                        } catch (e) {}
                     }
                     updatedInvestments[catObj.name] = list;
                 }
@@ -614,161 +499,109 @@
                 setGlobalSyncing(false); setSyncStatus("Carteira Sincronizada!"); setTimeout(() => setSyncStatus(""), 3000);
             };
 
-            const handleTrade = (cat, item, type, operation) => {
-                const isBuy = operation === 'BUY';
-                const label = isBuy ? 'Compra' : 'Venda';
+            const handleCreateAsset = (data) => {
+                const { cat, type } = newAssetModal;
+                let next = { ...investments };
                 if (type === 'ticker') {
-                    const qInput = prompt(`Quantidade de ${label} para ${item.ticker}:`, item.quantidade || "1");
-                    const pInput = prompt(`Preço Unitário da ${label} de ${item.ticker}:`, item.precoAtual || item.precoMedio);
-                    if (qInput && pInput) {
-                        const qty = parseValue(qInput); const price = parseValue(pInput); const totalOp = qty * price;
-                        if (!isBuy && qty > item.quantidade) { alert("Quantidade insuficiente."); return; }
-                        let next = { ...investments }; const list = [...(next[cat] || [])]; const idx = list.findIndex(i => i.id === item.id);
-                        if (idx !== -1) {
-                            if (isBuy) {
-                                const currentTotal = list[idx].quantidade * list[idx].precoMedio;
-                                const newQty = list[idx].quantidade + qty;
-                                list[idx].precoMedio = (currentTotal + totalOp) / newQty;
-                                list[idx].quantidade = newQty;
-                                next.saldoDisponivel -= totalOp;
-                            } else {
-                                list[idx].quantidade -= qty; next.saldoDisponivel += totalOp;
-                                if (list[idx].quantidade <= 0) list.splice(idx, 1);
-                            }
-                            next[cat] = list; next.movimentacoes = [registrarMovimentacao(null, item.ticker, label, qty, price), ...(next.movimentacoes || [])];
-                            setInvestments(next); save(next);
-                        }
-                    }
+                    const tickerUpper = data.ticker.toUpperCase();
+                    if(!tickerUpper || !data.quantidade || !data.precoMedio) { showAlert("Preencha todos os campos obrigatórios."); return; }
+                    if (EXCLUDED_TICKERS.includes(tickerUpper)) { showAlert("Ativo excluído."); return; }
+                    const q = parseValue(data.quantidade); const p = parseValue(data.precoMedio);
+                    const newItem = { id: Date.now().toString(), ticker: tickerUpper, quantity: q, quantidade: q, precoMedio: p, precoAtual: p, metaRs: 0 };
+                    next[cat] = [...(next[cat]||[]), newItem];
+                    next.movimentacoes = [registrarMovimentacao(null, tickerUpper, 'Compra', q, p), ...(next.movimentacoes || [])];
+                    next.saldoDisponivel = parseValue(next.saldoDisponivel) - (q * p);
                 } else {
-                    const vInput = prompt(`Valor do ${isBuy ? 'Aporte' : 'Resgate'} em ${item.nome}:`);
-                    if (vInput) {
-                        const val = parseValue(vInput); if (!isBuy && val > item.valorAtual) { alert("Saldo insuficiente."); return; }
-                        let next = { ...investments }; const list = [...(next[cat] || [])]; const idx = list.findIndex(i => i.id === item.id);
-                        if (idx !== -1) {
-                            if (isBuy) { list[idx].valorAtual += val; list[idx].valorAplicado += val; next.saldoDisponivel -= val; }
-                            else { list[idx].valorAtual -= val; next.saldoDisponivel += val; if (list[idx].valorAtual <= 0) list.splice(idx, 1); }
-                            next[cat] = list; next.movimentacoes = [registrarMovimentacao(null, item.nome, isBuy ? 'Aporte' : 'Resgate', 1, val), ...(next.movimentacoes || [])];
-                            setInvestments(next); save(next);
-                        }
-                    }
+                    if(!data.nome || !data.valorAplicado) { showAlert("Preencha o Nome e o Valor."); return; }
+                    const va = parseValue(data.valorAplicado); const vt = parseValue(data.valorAtual || data.valorAplicado);
+                    const newItem = { id: Date.now().toString(), nome: data.nome, valorAplicado: va, valorAtual: vt, metaRs: 0 };
+                    next[cat] = [...(next[cat]||[]), newItem];
+                    next.movimentacoes = [registrarMovimentacao(null, data.nome, 'Compra', 1, va), ...(next.movimentacoes || [])];
+                    next.saldoDisponivel = parseValue(next.saldoDisponivel) - va;
                 }
+                setInvestments(next); save(next); setNewAssetModal({ isOpen: false, cat: '', type: '' });
             };
 
-            const handleOpenEditModal = (cat, item, type) => {
-                const getMetaValue = () => {
-                    if (item.metaRs !== undefined) return item.metaRs.toString();
-                    if (item.metaPct !== undefined && parseValue(item.metaPct) > 0) {
-                        const categoryData = investments[cat] || [];
-                        const totalCusto = categoryData.reduce((acc, i) => {
-                            const q = type === 'ticker' ? parseValue(i.quantidade) : 1;
-                            const pC = type === 'ticker' ? parseValue(i.precoMedio) : parseValue(i.valorAplicado);
-                            return acc + (type === 'ticker' ? (q * pC) : pC);
-                        }, 0);
-                        return ((parseValue(item.metaPct) / 100) * totalCusto).toFixed(2);
+            const handleExecuteTrade = (data) => {
+                const { cat, item, type, operation } = tradeModal;
+                const isBuy = operation === 'BUY'; const label = isBuy ? 'Compra' : 'Venda';
+                let next = { ...investments }; const list = [...(next[cat] || [])]; const idx = list.findIndex(i => i.id === item.id);
+                if (idx === -1) return;
+                if (type === 'ticker') {
+                    const qty = parseValue(data.quantidade); const price = parseValue(data.preco);
+                    if(qty <= 0 || price <= 0) { showAlert("Valores inválidos."); return; }
+                    const totalOp = qty * price;
+                    if (!isBuy && qty > item.quantidade) { showAlert("Quantidade insuficiente para venda."); return; }
+                    if (isBuy) {
+                        const currentTotal = list[idx].quantidade * list[idx].precoMedio;
+                        const newQty = list[idx].quantidade + qty;
+                        list[idx].precoMedio = (currentTotal + totalOp) / newQty; list[idx].quantidade = newQty; next.saldoDisponivel -= totalOp;
+                    } else {
+                        list[idx].quantidade -= qty; next.saldoDisponivel += totalOp;
+                        if (list[idx].quantidade <= 0) list.splice(idx, 1);
                     }
-                    return '0';
-                };
+                    next.movimentacoes = [registrarMovimentacao(null, item.ticker, label, qty, price), ...(next.movimentacoes || [])];
+                } else {
+                    const val = parseValue(data.valor);
+                    if(val <= 0) { showAlert("Valor inválido."); return; }
+                    if (!isBuy && val > item.valorAtual) { showAlert("Saldo insuficiente para resgate."); return; }
+                    if (isBuy) { list[idx].valorAtual += val; list[idx].valorAplicado += val; next.saldoDisponivel -= val; } 
+                    else { list[idx].valorAtual -= val; next.saldoDisponivel += val; if (list[idx].valorAtual <= 0) list.splice(idx, 1); }
+                    next.movimentacoes = [registrarMovimentacao(null, item.nome, isBuy ? 'Aporte' : 'Resgate', 1, val), ...(next.movimentacoes || [])];
+                }
+                next[cat] = list; setInvestments(next); save(next); setTradeModal({ isOpen: false, cat: '', item: null, type: '', operation: '' });
+            };
 
-                setEditModal({
-                    isOpen: true, cat, type, item,
-                    ticker: item.ticker || '', nome: item.nome || '',
-                    quantidade: item.quantidade !== undefined ? item.quantidade.toString() : '',
-                    precoMedio: item.precoMedio !== undefined ? item.precoMedio.toString() : '',
-                    precoAtual: item.precoAtual !== undefined ? item.precoAtual.toString() : '',
-                    valorAplicado: item.valorAplicado !== undefined ? item.valorAplicado.toString() : '',
-                    valorAtual: item.valorAtual !== undefined ? item.valorAtual.toString() : '',
-                    metaRs: getMetaValue()
-                });
+            const handleSaveProvento = (data) => {
+                const valor = parseValue(data.valor);
+                if (isNaN(valor) || valor <= 0) { showAlert("Valor inválido."); return; }
+                const isPaid = data.isPaid; const dataStr = data.dataStr || new Date().toLocaleDateString('pt-BR');
+                let next = { ...investments };
+                const newDiv = { id: Date.now().toString(), data: dataStr, ativo: proventoModal.ativo.toUpperCase(), tipo: "Dividendo", valor, status: isPaid ? 'pago' : 'pendente' };
+                next.dividendos = [...(next.dividendos || []), newDiv];
+                if (isPaid) {
+                    next.movimentacoes = [registrarMovimentacao(dataStr, proventoModal.ativo, "Provento", 1, valor), ...(next.movimentacoes || [])];
+                    next.saldoDisponivel = parseValue(next.saldoDisponivel) + valor;
+                }
+                setInvestments(next); save(next); setProventoModal({ isOpen: false, ativo: '' });
             };
 
             const handleSaveEdit = () => {
-                const { cat, type, item } = editModal;
-                if (!item) return;
-
-                let next = { ...investments };
-                const list = [...(next[cat] || [])];
-                const idx = list.findIndex(i => i.id === item.id);
-                
+                const { cat, type, item } = editModal; if (!item) return;
+                let next = { ...investments }; const list = [...(next[cat] || [])]; const idx = list.findIndex(i => i.id === item.id);
                 if (idx !== -1) {
                     if (type === 'ticker') {
-                        list[idx].ticker = editModal.ticker.toUpperCase();
-                        list[idx].quantidade = parseValue(editModal.quantidade);
-                        list[idx].precoMedio = parseValue(editModal.precoMedio);
-                        list[idx].precoAtual = parseValue(editModal.precoAtual);
-                        list[idx].metaRs = parseValue(editModal.metaRs);
-                        if (list[idx].metaPct !== undefined) delete list[idx].metaPct;
+                        list[idx].ticker = editModal.ticker.toUpperCase(); list[idx].quantidade = parseValue(editModal.quantidade);
+                        list[idx].precoMedio = parseValue(editModal.precoMedio); list[idx].precoAtual = parseValue(editModal.precoAtual);
+                        list[idx].metaRs = parseValue(editModal.metaRs); delete list[idx].metaPct;
                     } else {
-                        list[idx].nome = editModal.nome;
-                        list[idx].valorAplicado = parseValue(editModal.valorAplicado);
-                        list[idx].valorAtual = parseValue(editModal.valorAtual);
-                        list[idx].metaRs = parseValue(editModal.metaRs);
-                        if (list[idx].metaPct !== undefined) delete list[idx].metaPct;
+                        list[idx].nome = editModal.nome; list[idx].valorAplicado = parseValue(editModal.valorAplicado);
+                        list[idx].valorAtual = parseValue(editModal.valorAtual); list[idx].metaRs = parseValue(editModal.metaRs); delete list[idx].metaPct;
                     }
-                    next[cat] = list;
-                    setInvestments(next);
-                    save(next);
-                    setSyncStatus("Ativo atualizado!");
-                    setTimeout(() => setSyncStatus(""), 2000);
+                    next[cat] = list; setInvestments(next); save(next); setSyncStatus("Atualizado!"); setTimeout(() => setSyncStatus(""), 2000);
                 }
                 setEditModal(prev => ({ ...prev, isOpen: false }));
             };
 
             const handleSaldoTransaction = () => {
                 const val = parseValue(saldoModal.valor);
-                if (isNaN(val) || val <= 0) {
-                    setModalError("Por favor, insira um valor válido.");
-                    return;
-                }
-                let next = { ...investments };
-                const currentSaldo = parseValue(next.saldoDisponivel);
-
+                if (isNaN(val) || val <= 0) { showAlert("Valor inválido."); return; }
+                let next = { ...investments }; const currentSaldo = parseValue(next.saldoDisponivel);
                 if (saldoModal.type === 'WITHDRAW') {
-                    if (val > currentSaldo) {
-                        setModalError("Saldo livre insuficiente para este saque.");
-                        return;
-                    }
+                    if (val > currentSaldo) { showAlert("Saldo livre insuficiente."); return; }
                     next.saldoDisponivel = currentSaldo - val;
-                    next.movimentacoes = [
-                        registrarMovimentacao(saldoModal.data, 'SALDO', 'Saque', 1, val),
-                        ...(next.movimentacoes || [])
-                    ];
+                    next.movimentacoes = [registrarMovimentacao(saldoModal.data, 'SALDO', 'Saque', 1, val), ...(next.movimentacoes || [])];
                 } else {
                     next.saldoDisponivel = currentSaldo + val;
-                    next.movimentacoes = [
-                        registrarMovimentacao(saldoModal.data, 'SALDO', 'Depósito', 1, val),
-                        ...(next.movimentacoes || [])
-                    ];
+                    next.movimentacoes = [registrarMovimentacao(saldoModal.data, 'SALDO', 'Depósito', 1, val), ...(next.movimentacoes || [])];
                 }
-
-                setInvestments(next);
-                save(next);
-                setSaldoModal(prev => ({ ...prev, isOpen: false }));
-                setModalError("");
-                setSyncStatus(saldoModal.type === 'WITHDRAW' ? "Saque realizado com sucesso!" : "Depósito realizado com sucesso!");
-                setTimeout(() => setSyncStatus(""), 3000);
-            };
-
-            const lancarProvento = (ativo) => {
-                const valor = parseValue(prompt(`Valor do provento de ${ativo}:`));
-                if (isNaN(valor) || valor <= 0) return;
-                const isPaid = prompt("Já pago? (S/N)", "S")?.toUpperCase() === 'S';
-                const data = prompt("Data (DD/MM/AAAA):", new Date().toLocaleDateString('pt-BR'));
-                setInvestments(prev => {
-                    const status = isPaid ? 'pago' : 'pendente';
-                    const newDiv = { id: Date.now().toString(), data, ativo: ativo.toUpperCase(), tipo: "Dividendo", valor, status };
-                    let next = { ...prev, dividendos: [...(prev.dividendos||[]), newDiv] };
-                    if (isPaid) {
-                        next.movimentacoes = [registrarMovimentacao(data, ativo, "Provento", 1, valor), ...(prev.movimentacoes || [])];
-                        next.saldoDisponivel = (parseValue(prev.saldoDisponivel) || 0) + valor;
-                    }
-                    save(next); return next;
-                });
+                setInvestments(next); save(next); setSaldoModal(prev => ({ ...prev, isOpen: false }));
+                setSyncStatus(saldoModal.type === 'WITHDRAW' ? "Saque realizado!" : "Depósito realizado!"); setTimeout(() => setSyncStatus(""), 3000);
             };
 
             const confirmarRecebimento = (divId) => {
                 setInvestments(prev => {
-                    const target = (prev.dividendos || []).find(d => d.id === divId);
-                    if (!target) return prev;
+                    const target = (prev.dividendos || []).find(d => d.id === divId); if (!target) return prev;
                     const updatedDivs = prev.dividendos.map(d => d.id === divId ? { ...d, status: 'pago' } : d);
                     const next = { ...prev, dividendos: updatedDivs, movimentacoes: [registrarMovimentacao(null, target.ativo, "Provento", 1, target.valor), ...(prev.movimentacoes || [])], saldoDisponivel: (parseValue(prev.saldoDisponivel) || 0) + parseValue(target.valor) };
                     save(next); return next;
@@ -777,58 +610,27 @@
 
             const renderTableSection = (cat, title, type = 'ticker') => {
                 const rawData = (investments[cat] || []);
-                
-                const tempCustoTotal = rawData.reduce((acc, item) => {
-                    const q = type === 'ticker' ? parseValue(item.quantidade) : 1;
-                    const pC = type === 'ticker' ? parseValue(item.precoMedio) : parseValue(item.valorAplicado);
-                    return acc + (type === 'ticker' ? (q * pC) : pC);
-                }, 0);
-
+                const tempCustoTotal = rawData.reduce((acc, item) => acc + (type === 'ticker' ? (parseValue(item.quantidade) * parseValue(item.precoMedio)) : parseValue(item.valorAplicado)), 0);
                 const processedData = rawData.map(item => {
                     const q = type === 'ticker' ? parseValue(item.quantidade) : 1;
                     const pA = type === 'ticker' ? parseValue(item.precoAtual) : parseValue(item.valorAtual);
                     const pC = type === 'ticker' ? parseValue(item.precoMedio) : parseValue(item.valorAplicado);
                     const varPct = type === 'ticker' ? parseValue(item.variacaoDia) : 0;
-                    const pat = q * pA;
-                    const custoTotal = type === 'ticker' ? (q * pC) : pC;
-                    const lucroR$ = pat - custoTotal;
-                    const lucroPct = custoTotal > 0 ? (lucroR$ / custoTotal) * 100 : 0;
-                    
+                    const pat = q * pA; const custoTotal = type === 'ticker' ? (q * pC) : pC;
+                    const lucroR$ = pat - custoTotal; const lucroPct = custoTotal > 0 ? (lucroR$ / custoTotal) * 100 : 0;
                     let metaRs = 0;
-                    if (item.metaRs !== undefined) {
-                        metaRs = parseValue(item.metaRs);
-                    } else if (item.metaPct !== undefined && parseValue(item.metaPct) > 0) {
-                        metaRs = (parseValue(item.metaPct) / 100) * tempCustoTotal;
-                    }
-                    
-                    let varR = 0;
-                    if (type === 'ticker' && varPct !== 0) {
-                        const prevP = pA / (1 + (varPct / 100));
-                        varR = (pA - prevP) * q;
-                    }
-                    return { 
-                        ...item, _ativo: type === 'ticker' ? item.ticker : item.nome,
-                        _qtd: q, _custo: pC, _custoTotal: custoTotal, _atual: pA,
-                        _varPct: varPct, _varR: varR, _patrimonio: pat,
-                        _lucroR$: lucroR$, _lucroPct: lucroPct, _metaRs: metaRs
-                    };
+                    if (item.metaRs !== undefined) metaRs = parseValue(item.metaRs);
+                    else if (item.metaPct !== undefined && parseValue(item.metaPct) > 0) metaRs = (parseValue(item.metaPct) / 100) * tempCustoTotal;
+                    let varR = 0; if (type === 'ticker' && varPct !== 0) { const prevP = pA / (1 + (varPct / 100)); varR = (pA - prevP) * q; }
+                    return { ...item, _ativo: type === 'ticker' ? item.ticker : item.nome, _qtd: q, _custo: pC, _custoTotal: custoTotal, _atual: pA, _varPct: varPct, _varR: varR, _patrimonio: pat, _lucroR$: lucroR$, _lucroPct: lucroPct, _metaRs: metaRs, _diffCusto: metaRs - custoTotal };
                 });
-
                 const totalCustoCategory = processedData.reduce((acc, item) => acc + item._custoTotal, 0);
                 const totalMetasPlaneadasRs = processedData.reduce((acc, item) => acc + item._metaRs, 0);
-
-                const finalData = processedData.map(item => {
-                    const diffCusto = item._metaRs - item._custoTotal;
-                    return { ...item, _diffCusto: diffCusto };
-                });
-
-                const sortedData = [...finalData].sort((a, b) => {
-                    const valA = a[sectionSort.key] ?? 0;
-                    const valB = b[sectionSort.key] ?? 0;
+                const sortedData = [...processedData].sort((a, b) => {
+                    const valA = a[sectionSort.key] ?? 0; const valB = b[sectionSort.key] ?? 0;
                     if (typeof valA === 'string') return sectionSort.dir === 'desc' ? valB.localeCompare(valA) : valA.localeCompare(valB);
                     return sectionSort.dir === 'desc' ? valB - valA : valA - valB;
                 });
-
                 const saldoAporteDiferenca = totalMetasPlaneadasRs - totalCustoCategory;
 
                 return (
@@ -840,49 +642,21 @@
                                     Meta Planeada da Carteira: {formatBRL(totalMetasPlaneadasRs)} (Custo Atual Aportado: {formatBRL(totalCustoCategory)})
                                 </p>
                             </div>
-                            <button onClick={() => {
-                                if(type === 'ticker') {
-                                    const t = prompt("Ticker:"); const q = prompt("Qtd:"); const p = prompt("P. Médio:");
-                                    if(t && q) { 
-                                        const tickerUpper = t.toUpperCase();
-                                        if (EXCLUDED_TICKERS.includes(tickerUpper)) { alert("Ativo excluído."); return; }
-                                        const next = { ...investments, [cat]: [...(investments[cat]||[]), {id: Date.now().toString(), ticker: tickerUpper, quantity: parseValue(q), quantidade: parseValue(q), precoMedio: parseValue(p), precoAtual: parseValue(p), metaRs: 0}], movimentacoes: [registrarMovimentacao(null, tickerUpper, 'Compra', q, p), ...(investments.movimentacoes || [])], saldoDisponivel: parseValue(investments.saldoDisponivel) - (parseValue(q) * parseValue(p)) };
-                                        setInvestments(next); save(next);
-                                    }
-                                } else {
-                                    const n = prompt("Nome:"); const va = prompt("Vlr Aplicado:"); const vt = prompt("Vlr Atual:");
-                                    if(n && va) { 
-                                        const next = { ...investments, [cat]: [...(investments[cat]||[]), {id: Date.now().toString(), nome: n, valorAplicado: parseValue(va), valorAtual: parseValue(vt || va), metaRs: 0}], movimentacoes: [registrarMovimentacao(null, n, 'Compra', 1, va), ...(investments.movimentacoes || [])], saldoDisponivel: parseValue(investments.saldoDisponivel) - parseValue(va) };
-                                        setInvestments(next); save(next);
-                                    }
-                                }
-                            }} className="bg-[#133054] text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-black shadow-lg">+ Novo Ativo</button>
+                            <button onClick={() => setNewAssetModal({ isOpen: true, cat, type })} className="bg-[#133054] text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-black shadow-lg">
+                                + Novo Ativo
+                            </button>
                         </div>
-
                         <div className="px-8 py-6 bg-slate-50/10 border-b border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between">
-                                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">O quanto tem investido (Custo Real)</span>
-                                <span className="text-sm sm:text-base font-black text-slate-900 mt-1">{formatBRL(totalCustoCategory)}</span>
-                            </div>
-                            <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between">
-                                <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">O quanto tem que ter investido (Meta)</span>
-                                <span className="text-sm sm:text-base font-black text-[#133054] mt-1">{formatBRL(totalMetasPlaneadasRs)}</span>
-                            </div>
-                            <div className={`p-4 rounded-2xl border shadow-sm flex flex-col justify-between ${
-                                saldoAporteDiferenca > 0 ? 'bg-amber-50/60 border-amber-100 text-amber-800' : saldoAporteDiferenca < 0 ? 'bg-emerald-50/60 border-emerald-100 text-emerald-800' : 'bg-slate-50 border-slate-100 text-slate-800'
-                            }`}>
+                            <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between"><span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">O quanto tem investido (Custo Real)</span><span className="text-sm sm:text-base font-black text-slate-900 mt-1">{formatBRL(totalCustoCategory)}</span></div>
+                            <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between"><span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">O quanto tem que ter investido (Meta)</span><span className="text-sm sm:text-base font-black text-[#133054] mt-1">{formatBRL(totalMetasPlaneadasRs)}</span></div>
+                            <div className={`p-4 rounded-2xl border shadow-sm flex flex-col justify-between ${saldoAporteDiferenca > 0 ? 'bg-amber-50/60 border-amber-100 text-amber-800' : saldoAporteDiferenca < 0 ? 'bg-emerald-50/60 border-emerald-100 text-emerald-800' : 'bg-slate-50 border-slate-100 text-slate-800'}`}>
                                 <span className="text-[9px] font-black uppercase tracking-wider opacity-90">Saldo de Aporte</span>
                                 <div className="flex items-center justify-between mt-1">
                                     <span className="text-sm sm:text-base font-black">{formatBRL(Math.abs(saldoAporteDiferenca))}</span>
-                                    <span className={`text-[8px] font-black px-2 py-0.5 rounded-lg border uppercase tracking-widest ${
-                                        saldoAporteDiferenca > 0 ? 'bg-white border-amber-200 text-amber-700' : saldoAporteDiferenca < 0 ? 'bg-white border-emerald-200 text-emerald-700' : 'bg-white border-slate-200 text-slate-700'
-                                    }`}>
-                                        {saldoAporteDiferenca > 0 ? "Falta Aportar (-)" : saldoAporteDiferenca < 0 ? "Sobra / Excesso (+)" : "Alinhado"}
-                                    </span>
+                                    <span className={`text-[8px] font-black px-2 py-0.5 rounded-lg border uppercase tracking-widest ${saldoAporteDiferenca > 0 ? 'bg-white border-amber-200 text-amber-700' : saldoAporteDiferenca < 0 ? 'bg-white border-emerald-200 text-emerald-700' : 'bg-white border-slate-200 text-slate-700'}`}>{saldoAporteDiferenca > 0 ? "Falta Aportar (-)" : saldoAporteDiferenca < 0 ? "Sobra / Excesso (+)" : "Alinhado"}</span>
                                 </div>
                             </div>
                         </div>
-
                         <div className="overflow-x-auto custom-scroll">
                             <table className="w-full text-left">
                                 <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest cursor-pointer select-none">
@@ -907,47 +681,22 @@
                                             <td className="px-6 py-6 text-right font-bold text-slate-400">{formatBRL(item._custoTotal)}</td>
                                             <td className="px-6 py-6 text-right font-black text-slate-900">{formatBRL(item._metaRs)}</td>
                                             <td className="px-6 py-6 text-right font-bold">
-                                                {item._metaRs === 0 && item._custoTotal === 0 ? (
-                                                    <span className="text-slate-300">-</span>
-                                                ) : item._metaRs === 0 && item._custoTotal > 0 ? (
-                                                    <div className="flex flex-col items-end">
-                                                        <span className="text-rose-600 font-black">-{formatBRL(item._custoTotal)}</span>
-                                                        <span className="text-[8px] sm:text-[9px] font-black uppercase text-rose-500 bg-rose-50/80 border border-rose-100 px-2 py-0.5 rounded-lg tracking-wider mt-1 animate-pulse">Alerta de Venda</span>
-                                                    </div>
-                                                ) : item._diffCusto > 0 ? (
-                                                    <span className="text-amber-500">Falta {formatBRL(item._diffCusto)}</span>
-                                                ) : (
-                                                    <span className="text-slate-400">Sobra {formatBRL(Math.abs(item._diffCusto))}</span>
-                                                )}
+                                                {item._metaRs === 0 && item._custoTotal === 0 ? (<span className="text-slate-300">-</span>) : item._metaRs === 0 && item._custoTotal > 0 ? (<div className="flex flex-col items-end"><span className="text-rose-600 font-black">-{formatBRL(item._custoTotal)}</span><span className="text-[8px] sm:text-[9px] font-black uppercase text-rose-500 bg-rose-50/80 border border-rose-100 px-2 py-0.5 rounded-lg tracking-wider mt-1 animate-pulse">Alerta de Venda</span></div>) : item._diffCusto > 0 ? (<span className="text-amber-500">Falta {formatBRL(item._diffCusto)}</span>) : (<span className="text-slate-400">Sobra {formatBRL(Math.abs(item._diffCusto))}</span>)}
                                             </td>
                                             <td className="px-6 py-6 text-right font-black text-[#133054]">{formatBRL(item._atual)}</td>
                                             {type === 'ticker' && <td className={`px-6 py-6 text-right font-bold ${item._varPct >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>{item._varPct.toFixed(2)}%</td>}
-                                            <td className={`px-6 py-6 text-right font-black ${item._lucroR$ >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-                                                <div className="flex flex-col items-end">
-                                                    <span>{item._lucroR$ >= 0 ? '+' : ''}{formatBRL(item._lucroR$)}</span>
-                                                    <span className="text-[10px] font-bold opacity-80">({item._lucroPct >= 0 ? '+' : ''}{item._lucroPct.toFixed(2)}%)</span>
-                                                </div>
-                                            </td>
+                                            <td className={`px-6 py-6 text-right font-black ${item._lucroR$ >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}><div className="flex flex-col items-end"><span>{item._lucroR$ >= 0 ? '+' : ''}{formatBRL(item._lucroR$)}</span><span className="text-[10px] font-bold opacity-80">({item._lucroPct >= 0 ? '+' : ''}{item._lucroPct.toFixed(2)}%)</span></div></td>
                                             <td className="px-6 py-6 text-right font-black text-slate-900">{formatBRL(item._patrimonio)}</td>
                                             <td className="px-6 py-6 text-right">
                                                 <div className="flex justify-end items-center gap-2">
-                                                    <button onClick={() => handleOpenEditModal(cat, item, type)} className="bg-slate-50 text-slate-700 hover:bg-[#133054] hover:text-white px-3 py-2 rounded-xl transition-all shadow-sm border border-slate-200 flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
-                                                        <LucideIcon name="Edit3" size={12}/> Editar
-                                                    </button>
-                                                    {(cat === 'acoes' || cat === 'realEstate' || cat === 'caixaTicker') && (
-                                                        <button onClick={() => lancarProvento(item.ticker)} className="bg-emerald-50 text-emerald-600 px-3 py-2 rounded-xl border border-emerald-100 hover:bg-emerald-600 hover:text-white transition-all flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
-                                                            <LucideIcon name="Coins" size={12}/> Provento
-                                                        </button>
-                                                    )}
-                                                    <button onClick={() => handleTrade(cat, item, type, 'BUY')} className="bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white px-3 py-2 rounded-xl transition-all shadow-sm border border-emerald-100 flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
-                                                        <LucideIcon name="PlusCircle" size={12}/> Compra
-                                                    </button>
-                                                    <button onClick={() => handleTrade(cat, item, type, 'SELL')} className="bg-orange-50 text-orange-600 hover:bg-orange-600 hover:text-white px-3 py-2 rounded-xl transition-all shadow-sm border border-orange-100 flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
-                                                        <LucideIcon name="MinusCircle" size={12}/> Venda
-                                                    </button>
-                                                    <button onClick={() => { if(confirm(`Eliminar definitivamente?`)) { const next = {...investments, [cat]: investments[cat].filter(i => i.id !== item.id)}; setInvestments(next); save(next); } }} className="bg-rose-50 text-rose-500 hover:bg-rose-600 hover:text-white px-3 py-2 rounded-xl transition-all shadow-sm border border-rose-100 flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
-                                                        <LucideIcon name="Trash2" size={12}/> Eliminar
-                                                    </button>
+                                                    <button onClick={() => {
+                                                        const getMetaValue = () => { if (item.metaRs !== undefined) return item.metaRs.toString(); if (item.metaPct !== undefined && parseValue(item.metaPct) > 0) return ((parseValue(item.metaPct) / 100) * tempCustoTotal).toFixed(2); return '0'; };
+                                                        setEditModal({ isOpen: true, cat, type, item, ticker: item.ticker || '', nome: item.nome || '', quantidade: item.quantidade !== undefined ? item.quantidade.toString() : '', precoMedio: item.precoMedio !== undefined ? item.precoMedio.toString() : '', precoAtual: item.precoAtual !== undefined ? item.precoAtual.toString() : '', valorAplicado: item.valorAplicado !== undefined ? item.valorAplicado.toString() : '', valorAtual: item.valorAtual !== undefined ? item.valorAtual.toString() : '', metaRs: getMetaValue() });
+                                                    }} className="bg-slate-50 text-slate-700 hover:bg-[#133054] hover:text-white px-3 py-2 rounded-xl transition-all shadow-sm border border-slate-200 flex items-center gap-2 text-[9px] font-black uppercase tracking-widest"><LucideIcon name="Edit3" size={12}/> Editar</button>
+                                                    {(cat === 'acoes' || cat === 'realEstate' || cat === 'caixaTicker') && (<button onClick={() => setProventoModal({ isOpen: true, ativo: item.ticker })} className="bg-emerald-50 text-emerald-600 px-3 py-2 rounded-xl border border-emerald-100 hover:bg-emerald-600 hover:text-white transition-all flex items-center gap-2 text-[9px] font-black uppercase tracking-widest"><LucideIcon name="Coins" size={12}/> Provento</button>)}
+                                                    <button onClick={() => setTradeModal({ isOpen: true, cat, item, type, operation: 'BUY' })} className="bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white px-3 py-2 rounded-xl transition-all shadow-sm border border-emerald-100 flex items-center gap-2 text-[9px] font-black uppercase tracking-widest"><LucideIcon name="PlusCircle" size={12}/> Compra</button>
+                                                    <button onClick={() => setTradeModal({ isOpen: true, cat, item, type, operation: 'SELL' })} className="bg-orange-50 text-orange-600 hover:bg-orange-600 hover:text-white px-3 py-2 rounded-xl transition-all shadow-sm border border-orange-100 flex items-center gap-2 text-[9px] font-black uppercase tracking-widest"><LucideIcon name="MinusCircle" size={12}/> Venda</button>
+                                                    <button onClick={() => setConfirmDialog({ isOpen: true, message: `Tem a certeza que quer eliminar ${item._ativo} definitivamente?`, onConfirm: () => { const next = {...investments, [cat]: investments[cat].filter(i => i.id !== item.id)}; setInvestments(next); save(next); setConfirmDialog({ isOpen: false }); }})} className="bg-rose-50 text-rose-500 hover:bg-rose-600 hover:text-white px-3 py-2 rounded-xl transition-all shadow-sm border border-rose-100 flex items-center gap-2 text-[9px] font-black uppercase tracking-widest"><LucideIcon name="Trash2" size={12}/> Eliminar</button>
                                                 </div>
                                             </td>
                                         </tr>
@@ -959,104 +708,45 @@
                 );
             };
 
-            if (authLoading) {
-                return (
-                    <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50">
-                        <div className="w-12 h-12 border-4 border-[#133054] border-t-transparent rounded-full animate-spin mb-4"></div>
-                        <p className="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">A validar segurança...</p>
-                    </div>
-                );
-            }
+            if (authLoading) return (
+                <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50">
+                    <div className="w-12 h-12 border-4 border-[#133054] border-t-transparent rounded-full animate-spin mb-4"></div>
+                    <p className="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">A validar segurança...</p>
+                </div>
+            );
 
-            if (!user) {
-                return (
-                    <div className="flex items-center justify-center min-h-screen bg-slate-50 p-4">
-                        <div className="bg-white p-10 rounded-[2.5rem] shadow-2xl max-w-sm w-full border border-slate-100 text-center animate-in">
-                            <div className="w-20 h-20 bg-[#133054] rounded-[1.5rem] flex items-center justify-center mx-auto mb-6 shadow-xl">
-                                <LucideIcon name="ShieldCheck" size={40} className="text-white" />
-                            </div>
-                            <h1 className="text-2xl font-black uppercase tracking-tight text-slate-900 mb-2">Icaro<span className="text-blue-600">Invest</span></h1>
-                            <p className="text-sm font-bold text-slate-400 mb-6">
-                                {isRegistering ? "Crie uma nova conta segura para começar." : "Aceda à sua carteira de forma segura."}
-                            </p>
-                            
-                            {loginError && (
-                                <div className="mb-6 p-3.5 bg-rose-50 text-rose-700 border border-rose-100 rounded-2xl text-[10px] font-black uppercase tracking-wide text-left leading-relaxed">
-                                    {loginError}
-                                </div>
-                            )}
-                            
-                            <form onSubmit={handleEmailAuth} className="space-y-4">
-                                <div>
-                                    <input 
-                                        type="email" 
-                                        placeholder="O seu Email"
-                                        value={email}
-                                        onChange={e => setEmail(e.target.value)}
-                                        className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold outline-none focus:border-[#133054] focus:bg-white transition-all text-sm text-slate-900 text-left"
-                                        required
-                                    />
-                                </div>
-                                <div>
-                                    <input 
-                                        type="password" 
-                                        placeholder="A sua Senha"
-                                        value={password}
-                                        onChange={e => setPassword(e.target.value)}
-                                        className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold outline-none focus:border-[#133054] focus:bg-white transition-all text-sm text-slate-900 text-left"
-                                        required
-                                    />
-                                </div>
-                                <button 
-                                    type="submit"
-                                    className="w-full bg-[#133054] text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-blue-900 transition-all shadow-lg flex justify-center items-center gap-3"
-                                >
-                                    <LucideIcon name={isRegistering ? "UserPlus" : "LogIn"} size={16} />
-                                    {isRegistering ? "Registar Conta" : "Entrar no Sistema"}
-                                </button>
-                            </form>
-
-                            <div className="mt-6 text-center">
-                                <button 
-                                    onClick={() => { setIsRegistering(!isRegistering); setLoginError(""); }}
-                                    className="text-[10px] font-black uppercase text-slate-400 hover:text-[#133054] tracking-widest transition-colors"
-                                >
-                                    {isRegistering ? "Já tem conta? Fazer Login" : "Não tem conta? Registar agora"}
-                                </button>
-                            </div>
-                        </div>
+            if (!user) return (
+                <div className="flex items-center justify-center min-h-screen bg-slate-50 p-4">
+                    <div className="bg-white p-10 rounded-[2.5rem] shadow-2xl max-w-sm w-full border border-slate-100 text-center animate-in">
+                        <div className="w-20 h-20 bg-[#133054] rounded-[1.5rem] flex items-center justify-center mx-auto mb-6 shadow-xl"><LucideIcon name="ShieldCheck" size={40} className="text-white" /></div>
+                        <h1 className="text-2xl font-black uppercase tracking-tight text-slate-900 mb-2">Icaro<span className="text-blue-600">Invest</span></h1>
+                        <p className="text-sm font-bold text-slate-400 mb-6">{isRegistering ? "Crie uma nova conta segura para começar." : "Aceda à sua carteira de forma segura."}</p>
+                        {loginError && <div className="mb-6 p-3.5 bg-rose-50 text-rose-700 border border-rose-100 rounded-2xl text-[10px] font-black uppercase tracking-wide text-left leading-relaxed">{loginError}</div>}
+                        <form onSubmit={handleEmailAuth} className="space-y-4">
+                            <div><input type="email" placeholder="O seu Email" value={email} onChange={e => setEmail(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold outline-none focus:border-[#133054] focus:bg-white transition-all text-sm text-slate-900 text-left" required /></div>
+                            <div><input type="password" placeholder="A sua Senha" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold outline-none focus:border-[#133054] focus:bg-white transition-all text-sm text-slate-900 text-left" required /></div>
+                            <button type="submit" className="w-full bg-[#133054] text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-blue-900 transition-all shadow-lg flex justify-center items-center gap-3"><LucideIcon name={isRegistering ? "UserPlus" : "LogIn"} size={16} />{isRegistering ? "Registar Conta" : "Entrar no Sistema"}</button>
+                        </form>
+                        <div className="mt-6 text-center"><button onClick={() => { setIsRegistering(!isRegistering); setLoginError(""); }} className="text-[10px] font-black uppercase text-slate-400 hover:text-[#133054] tracking-widest transition-colors">{isRegistering ? "Já tem conta? Fazer Login" : "Não tem conta? Registar agora"}</button></div>
                     </div>
-                );
-            }
+                </div>
+            );
 
             return (
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-32">
                     <header className="py-10 flex flex-col md:flex-row justify-between items-center gap-8">
                         <div className="flex items-center gap-4 cursor-pointer" onClick={() => setActiveTab('dashboard')}>
                             <div className="w-12 h-12 rounded-full overflow-hidden bg-slate-200 border-2 border-[#133054] shadow-md flex items-center justify-center">
-                                {user.photoURL ? <img src={user.photoURL} alt="User" className="w-full h-full object-cover" /> : <LucideIcon name="User" size={24} className="text-slate-400" />}
+                                <LucideIcon name="User" size={24} className="text-slate-400" />
                             </div>
                             <div>
                                 <h1 className="text-xl font-black uppercase tracking-tight text-slate-900 leading-none">Icaro<span className="text-blue-600">Invest</span></h1>
-                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Bem-vindo, {user.displayName || user.email}</p>
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Bem-vindo, {user.email}</p>
                             </div>
                         </div>
                         <nav className="flex bg-white p-2 rounded-[1.5rem] shadow-sm border border-slate-100 overflow-x-auto no-scrollbar max-w-full">
-                            {[
-                                { id: 'dashboard', icon: 'LayoutDashboard', label: 'Resumo' },
-                                { id: 'mercado', icon: 'Globe', label: 'Mercado' },
-                                { id: 'acoes', icon: 'TrendingUp', label: 'Ações' },
-                                { id: 'realEstate', icon: 'Home', label: 'RE' },
-                                { id: 'caixa', icon: 'Landmark', label: 'Caixa' },
-                                { id: 'alternativos', icon: 'Layers', label: 'Alt' },
-                                { id: 'movimentacoes', icon: 'ArrowLeftRight', label: 'Mov' },
-                                { id: 'dividendos', icon: 'Coins', label: 'Proventos' },
-                                { id: 'historico', icon: 'History', label: 'Histórico' },
-                                { id: 'config', icon: 'Settings', label: 'Configurações' }
-                            ].map(t => (
-                                <button key={t.id} onClick={() => setActiveTab(t.id)} className={`flex items-center gap-2 px-4 py-2.5 sm:px-6 sm:py-3 rounded-2xl text-[10px] sm:text-xs font-black transition-all whitespace-nowrap ${activeTab === t.id ? 'bg-[#133054] text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}>
-                                    <LucideIcon name={t.icon} size={14} /> {t.label}
-                                </button>
+                            {[{ id: 'dashboard', icon: 'LayoutDashboard', label: 'Resumo' }, { id: 'mercado', icon: 'Globe', label: 'Mercado' }, { id: 'acoes', icon: 'TrendingUp', label: 'Ações' }, { id: 'realEstate', icon: 'Home', label: 'RE' }, { id: 'caixa', icon: 'Landmark', label: 'Caixa' }, { id: 'alternativos', icon: 'Layers', label: 'Alt' }, { id: 'movimentacoes', icon: 'ArrowLeftRight', label: 'Mov' }, { id: 'dividendos', icon: 'Coins', label: 'Proventos' }, { id: 'historico', icon: 'History', label: 'Histórico' }, { id: 'config', icon: 'Settings', label: 'Definições' }].map(t => (
+                                <button key={t.id} onClick={() => setActiveTab(t.id)} className={`flex items-center gap-2 px-4 py-2.5 sm:px-6 sm:py-3 rounded-2xl text-[10px] sm:text-xs font-black transition-all whitespace-nowrap ${activeTab === t.id ? 'bg-[#133054] text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}`}><LucideIcon name={t.icon} size={14} /> {t.label}</button>
                             ))}
                         </nav>
                     </header>
@@ -1068,61 +758,27 @@
                             <div className="space-y-10 animate-fade">
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                                     <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100">
-                                        <div className="flex items-center gap-3 mb-6 border-b border-slate-100 pb-4">
-                                            <div className="bg-slate-100 p-3 rounded-xl text-slate-500"><LucideIcon name="User" size={20} /></div>
-                                            <h2 className="font-black text-[#133054] uppercase tracking-tighter text-xl">Perfil do Investidor</h2>
-                                        </div>
+                                        <div className="flex items-center gap-3 mb-6 border-b border-slate-100 pb-4"><div className="bg-slate-100 p-3 rounded-xl text-slate-500"><LucideIcon name="User" size={20} /></div><h2 className="font-black text-[#133054] uppercase tracking-tighter text-xl">Perfil do Investidor</h2></div>
                                         <div className="space-y-4 mb-8">
-                                            <div>
-                                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Nome</p>
-                                                <p className="font-bold text-slate-900">{user.displayName || 'N/A'}</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Email Autenticado</p>
-                                                <p className="font-bold text-slate-900">{user.email}</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">ID de Segurança</p>
-                                                <p className="font-mono text-xs text-slate-500 bg-slate-50 p-2 rounded-lg break-all">{user.uid}</p>
-                                            </div>
+                                            <div><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Email Autenticado</p><p className="font-bold text-slate-900">{user.email}</p></div>
+                                            <div><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">ID de Segurança</p><p className="font-mono text-xs text-slate-500 bg-slate-50 p-2 rounded-lg break-all">{user.uid}</p></div>
                                         </div>
-                                        <button onClick={handleLogout} className="w-full bg-rose-50 text-rose-600 border border-rose-100 py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-rose-600 hover:text-white transition-all flex items-center justify-center gap-2">
-                                            <LucideIcon name="LogOut" size={16} /> Terminar Sessão (Sair)
-                                        </button>
+                                        <button onClick={handleLogout} className="w-full bg-rose-50 text-rose-600 border border-rose-100 py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-rose-600 hover:text-white transition-all flex items-center justify-center gap-2"><LucideIcon name="LogOut" size={16} /> Terminar Sessão (Sair)</button>
                                     </div>
-
                                     <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100">
-                                        <div className="flex items-center gap-3 mb-6 border-b border-slate-100 pb-4">
-                                            <div className="bg-emerald-100 p-3 rounded-xl text-emerald-600"><LucideIcon name="Database" size={20} /></div>
-                                            <h2 className="font-black text-[#133054] uppercase tracking-tighter text-xl">Backup e Restauração</h2>
-                                        </div>
-                                        <p className="text-sm font-bold text-slate-500 mb-8">O sistema guarda todos os dados em tempo real na cloud. Utilize as ferramentas abaixo caso pretenda fazer backups offline (ficheiro JSON) ou migrar dados para a sua conta atual.</p>
-                                        
+                                        <div className="flex items-center gap-3 mb-6 border-b border-slate-100 pb-4"><div className="bg-emerald-100 p-3 rounded-xl text-emerald-600"><LucideIcon name="Database" size={20} /></div><h2 className="font-black text-[#133054] uppercase tracking-tighter text-xl">Backup e Restauração</h2></div>
                                         <div className="space-y-6">
                                             <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
                                                 <h3 className="font-black text-slate-800 uppercase tracking-widest text-[10px] mb-2">1. Exportar Dados (Backup)</h3>
-                                                <p className="text-xs text-slate-500 mb-4">Descarrega todo o seu histórico e carteira num ficheiro seguro .json.</p>
-                                                <button onClick={exportBackup} className="bg-[#133054] text-white px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-black shadow-md flex items-center justify-center gap-2 w-full transition-all">
-                                                    <LucideIcon name="DownloadCloud" size={14} /> Fazer Download do Backup
-                                                </button>
+                                                <button onClick={exportBackup} className="bg-[#133054] text-white px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-black shadow-md flex items-center justify-center gap-2 w-full transition-all mt-4"><LucideIcon name="DownloadCloud" size={14} /> Download do Backup</button>
                                             </div>
-
                                             <div className="bg-amber-50 p-6 rounded-2xl border border-amber-100">
                                                 <h3 className="font-black text-amber-800 uppercase tracking-widest text-[10px] mb-2">2. Restaurar Dados (Importar)</h3>
-                                                <p className="text-xs text-amber-700 mb-4 opacity-80">Cuidado: O ficheiro JSON importado irá adicionar e sobrepor os dados da sua carteira atual na cloud.</p>
-                                                <label className="bg-white text-amber-600 border border-amber-200 px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-amber-600 hover:text-white shadow-sm flex items-center justify-center gap-2 w-full transition-all cursor-pointer">
-                                                    <LucideIcon name="UploadCloud" size={14} /> Selecionar Ficheiro JSON
-                                                    <input type="file" accept=".json" onChange={handleImportBackup} ref={fileInputRef} className="hidden" />
-                                                </label>
+                                                <label className="bg-white text-amber-600 border border-amber-200 px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-amber-600 hover:text-white shadow-sm flex items-center justify-center gap-2 w-full transition-all cursor-pointer mt-4"><LucideIcon name="UploadCloud" size={14} /> Selecionar JSON<input type="file" accept=".json" onChange={handleImportBackup} ref={fileInputRef} className="hidden" /></label>
                                             </div>
-
-                                            {/* O BOTÃO DE MIGRAÇÃO ESTÁ AQUI */}
                                             <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100">
                                                 <h3 className="font-black text-blue-800 uppercase tracking-widest text-[10px] mb-2">3. Migrar Dados Antigos</h3>
-                                                <p className="text-xs text-blue-700 mb-4 opacity-80">Importe os dados que estavam salvos de forma global no "portfolio_principal" para o seu utilizador atual.</p>
-                                                <button onClick={handleMigrateOldData} className="bg-blue-600 text-white px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 shadow-sm flex items-center justify-center gap-2 w-full transition-all">
-                                                    <LucideIcon name="DatabaseBackup" size={14} /> Importar portfolio_principal
-                                                </button>
+                                                <button onClick={handleMigrateOldData} className="bg-blue-600 text-white px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 shadow-sm flex items-center justify-center gap-2 w-full transition-all mt-4"><LucideIcon name="DatabaseBackup" size={14} /> Importar portfolio_principal</button>
                                             </div>
                                         </div>
                                     </div>
@@ -1135,29 +791,12 @@
                                 <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
                                     <div className="glass p-3 sm:p-4 rounded-premium flex flex-col justify-between min-w-0 shadow-sm hover:shadow-md transition-all flex-1 border border-slate-100">
                                         <div className="flex items-center gap-2 sm:gap-3">
-                                            <div className="bg-emerald-600 p-2 sm:p-3 rounded-xl sm:rounded-2xl text-white shadow-md flex-shrink-0">
-                                                <LucideIcon name="Wallet" size={16} className="sm:w-5 sm:h-5" />
-                                            </div>
-                                            <div className="min-w-0 flex-1">
-                                                <p className="text-[8px] sm:text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5 truncate">Saldo Livre</p>
-                                                <h3 className="text-xs sm:text-sm md:text-base lg:text-lg font-black tabular truncate text-slate-900">
-                                                    {formatBRL(totals.saldo)}
-                                                </h3>
-                                            </div>
+                                            <div className="bg-emerald-600 p-2 sm:p-3 rounded-xl sm:rounded-2xl text-white shadow-md flex-shrink-0"><LucideIcon name="Wallet" size={16} className="sm:w-5 sm:h-5" /></div>
+                                            <div className="min-w-0 flex-1"><p className="text-[8px] sm:text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5 truncate">Saldo Livre</p><h3 className="text-xs sm:text-sm md:text-base lg:text-lg font-black tabular truncate text-slate-900">{formatBRL(totals.saldo)}</h3></div>
                                         </div>
                                         <div className="flex gap-1 mt-2.5 pt-2 border-t border-slate-100/60">
-                                            <button 
-                                                onClick={() => setSaldoModal({ isOpen: true, type: 'DEPOSIT', valor: '', data: new Date().toLocaleDateString('pt-BR'), descricao: 'Aporte de Capital' })}
-                                                className="flex-1 py-1 text-center bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white rounded-lg text-[8px] font-black uppercase tracking-wider transition-all"
-                                            >
-                                                + Depósito
-                                            </button>
-                                            <button 
-                                                onClick={() => setSaldoModal({ isOpen: true, type: 'WITHDRAW', valor: '', data: new Date().toLocaleDateString('pt-BR'), descricao: 'Resgate de Saldo' })}
-                                                className="flex-1 py-1 text-center bg-rose-50 text-rose-700 hover:bg-rose-600 hover:text-white rounded-lg text-[8px] font-black uppercase tracking-wider transition-all"
-                                            >
-                                                - Saque
-                                            </button>
+                                            <button onClick={() => setSaldoModal({ isOpen: true, type: 'DEPOSIT', valor: '', data: new Date().toLocaleDateString('pt-BR') })} className="flex-1 py-1 text-center bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white rounded-lg text-[8px] font-black uppercase tracking-wider transition-all">+ Depósito</button>
+                                            <button onClick={() => setSaldoModal({ isOpen: true, type: 'WITHDRAW', valor: '', data: new Date().toLocaleDateString('pt-BR') })} className="flex-1 py-1 text-center bg-rose-50 text-rose-700 hover:bg-rose-600 hover:text-white rounded-lg text-[8px] font-black uppercase tracking-wider transition-all">- Saque</button>
                                         </div>
                                     </div>
                                     <StatCard isMobile={isMobile} title="Património" value={formatBRL(totals.total)} icon="PieChart" colorClass="bg-[#133054]" subValue={`${totals.varDiaTotal >= 0 ? '+' : ''}${formatBRL(totals.varDiaTotal)} (${totals.varDiaTotalPct >= 0 ? '+' : ''}${totals.varDiaTotalPct.toFixed(2)}%)`} />
@@ -1166,7 +805,6 @@
                                     <StatCard isMobile={isMobile} title="Caixa" value={formatBRL(totals.caixa.atual - totals.saldo)} icon="PiggyBank" colorClass="bg-slate-500" subValue={`${totals.caixa.variacaoDiaR$ >= 0 ? '+' : ''}${formatBRL(totals.caixa.variacaoDiaR$)} (${totals.caixa.varDiaPct >= 0 ? '+' : ''}${totals.caixa.varDiaPct.toFixed(2)}%)`} />
                                     <StatCard isMobile={isMobile} title="Alt" value={formatBRL(totals.alt.atual)} icon="Layers" colorClass="bg-rose-500" subValue={`${totals.alt.variacaoDiaR$ >= 0 ? '+' : ''}${formatBRL(totals.alt.variacaoDiaR$)} (${totals.alt.varDiaPct >= 0 ? '+' : ''}${totals.alt.varDiaPct.toFixed(2)}%)`} />
                                 </div>
-
                                 <div className="space-y-4">
                                     <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-4">Desempenho por Categoria (Abas)</h2>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -1176,26 +814,13 @@
                                         <CategoryPerformanceCard title="Alternativos" stats={totals.alt} icon="Layers" colorClass="bg-rose-500" borderClass="border-rose-100" />
                                     </div>
                                 </div>
-
                                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
                                     <div className="lg:col-span-2 bg-white rounded-[2.5rem] p-10 min-h-[500px] flex flex-col shadow-sm border border-slate-100">
                                         <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-10 text-center">Alocação Total</h2>
                                         <div className="flex-1 w-full h-full">
                                             <ResponsiveContainer width="100%" height="100%">
                                                 <PieChart margin={{ top: 20, right: 35, left: 35, bottom: 20 }}>
-                                                    <Pie 
-                                                        data={[{ name: 'Ações', value: totals.acoes.atual }, { name: 'RE', value: totals.re.atual }, { name: 'Caixa', value: totals.caixa.atual }, { name: 'Alt', value: totals.alt.atual }].filter(d => d.value > 0)} 
-                                                        innerRadius={isMobile ? 40 : 65} 
-                                                        outerRadius={isMobile ? 70 : 100} 
-                                                        paddingAngle={6} 
-                                                        dataKey="value" 
-                                                        stroke="none" 
-                                                        cornerRadius={10}
-                                                        label={renderCustomizedLabel}
-                                                        labelLine={false}
-                                                    >
-                                                        {COLORS.map((c, i) => <Cell key={i} fill={c} />)}
-                                                    </Pie>
+                                                    <Pie data={[{ name: 'Ações', value: totals.acoes.atual }, { name: 'RE', value: totals.re.atual }, { name: 'Caixa', value: totals.caixa.atual }, { name: 'Alt', value: totals.alt.atual }].filter(d => d.value > 0)} innerRadius={isMobile ? 40 : 65} outerRadius={isMobile ? 70 : 100} paddingAngle={6} dataKey="value" stroke="none" cornerRadius={10} label={renderCustomizedLabel} labelLine={false}>{COLORS.map((c, i) => <Cell key={i} fill={c} />)}</Pie>
                                                     <Tooltip contentStyle={{ borderRadius: '1.5rem', border: 'none', boxShadow: '0 10px 20px rgba(0,0,0,0.05)', fontWeight: '900' }} formatter={(v) => formatBRL(v)} />
                                                 </PieChart>
                                             </ResponsiveContainer>
@@ -1205,10 +830,7 @@
                                         <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-8">Composição</h2>
                                         <div className="space-y-4">
                                             {[ { label: 'Ações', v: totals.acoes, color: COLORS[0] }, { label: 'RE', v: totals.re, color: COLORS[1] }, { label: 'Caixa', v: totals.caixa, color: COLORS[2] }, { label: 'Alt', v: totals.alt, color: COLORS[4] } ].map(item => (
-                                                <div key={item.label} className="p-5 bg-slate-50/50 rounded-3xl border border-slate-100 flex justify-between items-center">
-                                                    <div className="flex items-center gap-3"><div className="w-3 h-3 rounded-full" style={{ background: item.color }}></div><span className="font-bold text-slate-700 text-xs uppercase">{item.label}</span></div>
-                                                    <span className="font-black text-slate-900 tabular">{formatBRL(item.v.atual)}</span>
-                                                </div>
+                                                <div key={item.label} className="p-5 bg-slate-50/50 rounded-3xl border border-slate-100 flex justify-between items-center"><div className="flex items-center gap-3"><div className="w-3 h-3 rounded-full" style={{ background: item.color }}></div><span className="font-bold text-slate-700 text-xs uppercase">{item.label}</span></div><span className="font-black text-slate-900 tabular">{formatBRL(item.v.atual)}</span></div>
                                             ))}
                                         </div>
                                     </div>
@@ -1221,56 +843,24 @@
                                 <div className="bg-white rounded-[2rem] overflow-hidden shadow-sm border border-slate-100">
                                     <div className="p-8 bg-slate-50/30 border-b flex justify-between items-center flex-wrap gap-4">
                                         <div><h2 className="font-black text-[#133054] uppercase tracking-tighter text-2xl">Carteira Consolidada</h2><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Visão geral dos ativos cotados</p></div>
-                                        <button onClick={syncGlobalPortfolio} disabled={globalSyncing} className={`bg-emerald-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 shadow-lg flex items-center gap-2 transition-all ${globalSyncing ? 'opacity-50' : ''}`}>
-                                            <LucideIcon name="RefreshCw" size={14} className={globalSyncing ? 'spin' : ''} /> {globalSyncing ? 'Sincronizando...' : 'Sincronizar B3'}
-                                        </button>
+                                        <button onClick={syncGlobalPortfolio} disabled={globalSyncing} className={`bg-emerald-600 text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 shadow-lg flex items-center gap-2 transition-all ${globalSyncing ? 'opacity-50' : ''}`}><LucideIcon name="RefreshCw" size={14} className={globalSyncing ? 'spin' : ''} /> {globalSyncing ? 'Sincronizando...' : 'Sincronizar B3'}</button>
                                     </div>
                                     <div className="overflow-x-auto custom-scroll">
                                         <table className="w-full text-left">
                                             <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest cursor-pointer select-none">
-                                                <tr>
-                                                    <th className="px-10 py-6" onClick={() => handleMarketSort('ativo')}>Ativos <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
-                                                    <th className="px-10 py-6 text-center" onClick={() => handleMarketSort('qtd')}>QTY <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
-                                                    <th className="px-10 py-6 text-right" onClick={() => handleMarketSort('custo')}>CUSTO <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
-                                                    <th className="px-10 py-6 text-right" onClick={() => handleMarketSort('atual')}>ATUAL <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
-                                                    <th className="px-10 py-6 text-right" onClick={() => handleMarketSort('varDia')}>VAR DIA % <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
-                                                    <th className="px-10 py-6 text-right" onClick={() => handleMarketSort('varDiaR$')}>VAR DIA R$ <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
-                                                    <th className="px-10 py-6 text-right" onClick={() => handleMarketSort('patrimonio')}>PATRIMONIO <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th>
-                                                </tr>
+                                                <tr><th className="px-10 py-6" onClick={() => handleMarketSort('ativo')}>Ativos <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th><th className="px-10 py-6 text-center" onClick={() => handleMarketSort('qtd')}>QTY <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th><th className="px-10 py-6 text-right" onClick={() => handleMarketSort('custo')}>CUSTO <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th><th className="px-10 py-6 text-right" onClick={() => handleMarketSort('atual')}>ATUAL <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th><th className="px-10 py-6 text-right" onClick={() => handleMarketSort('varDia')}>VAR DIA % <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th><th className="px-10 py-6 text-right" onClick={() => handleMarketSort('varDiaR$')}>VAR DIA R$ <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th><th className="px-10 py-6 text-right" onClick={() => handleMarketSort('patrimonio')}>PATRIMONIO <LucideIcon name="ChevronDown" size={10} className="inline ml-1"/></th></tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100 tabular text-sm">
                                                 {marketPortfolioList.map(item => (
-                                                    <tr key={item.ativo + Math.random()} className="hover:bg-slate-50/50 transition-colors">
-                                                        <td className="px-10 py-6 font-black text-[#133054] uppercase">{item.ativo}</td>
-                                                        <td className="px-10 py-6 text-center font-bold">{item.qtd.toLocaleString(undefined, { maximumFractionDigits: 8 })}</td>
-                                                        <td className="px-10 py-6 text-right font-bold text-slate-400">{formatBRL(item.custo)}</td>
-                                                        <td className="px-10 py-6 text-right font-black text-[#133054]">{formatBRL(item.atual)}</td>
-                                                        <td className={`px-10 py-6 text-right font-bold ${item.varDia >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>{item.varDia.toFixed(2)}%</td>
-                                                        <td className={`px-10 py-6 text-right font-bold ${item.varDiaR$ >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>{formatBRL(item.varDiaR$)}</td>
-                                                        <td className="px-10 py-6 text-right font-black text-slate-900">{formatBRL(item.patrimonio)}</td>
-                                                    </tr>
+                                                    <tr key={item.ativo + Math.random()} className="hover:bg-slate-50/50 transition-colors"><td className="px-10 py-6 font-black text-[#133054] uppercase">{item.ativo}</td><td className="px-10 py-6 text-center font-bold">{item.qtd.toLocaleString(undefined, { maximumFractionDigits: 8 })}</td><td className="px-10 py-6 text-right font-bold text-slate-400">{formatBRL(item.custo)}</td><td className="px-10 py-6 text-right font-black text-[#133054]">{formatBRL(item.atual)}</td><td className={`px-10 py-6 text-right font-bold ${item.varDia >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>{item.varDia.toFixed(2)}%</td><td className={`px-10 py-6 text-right font-bold ${item.varDiaR$ >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>{formatBRL(item.varDiaR$)}</td><td className="px-10 py-6 text-right font-black text-slate-900">{formatBRL(item.patrimonio)}</td></tr>
                                                 ))}
                                             </tbody>
                                         </table>
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                                    <div className="bg-white rounded-[2rem] overflow-hidden shadow-sm border border-slate-100">
-                                        <div className="p-8 bg-emerald-50/50 border-b flex items-center gap-3"><div className="p-2 bg-emerald-600 rounded-lg text-white"><LucideIcon name="TrendingUp" size={20}/></div><h2 className="font-black text-emerald-800 uppercase tracking-tighter text-xl">Maiores Altas</h2></div>
-                                        <div className="p-4 space-y-2">
-                                            {marketTopGainers.map((s) => (
-                                                <div key={s.stock} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl"><span className="font-black text-[#133054] uppercase">{s.stock}</span><div className="text-right"><p className="font-black text-slate-900 text-xs">{formatBRL(s.close)}</p><p className="font-black text-emerald-600 text-[10px]">+{s.change.toFixed(2)}%</p></div></div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    <div className="bg-white rounded-[2rem] overflow-hidden shadow-sm border border-slate-100">
-                                        <div className="p-8 bg-rose-50/50 border-b flex items-center gap-3"><div className="p-2 bg-rose-600 rounded-lg text-white"><LucideIcon name="TrendingDown" size={20}/></div><h2 className="font-black text-rose-800 uppercase tracking-tighter text-xl">Maiores Baixas</h2></div>
-                                        <div className="p-4 space-y-2">
-                                            {marketTopLosers.map((s) => (
-                                                <div key={s.stock} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl"><span className="font-black text-[#133054] uppercase">{s.stock}</span><div className="text-right"><p className="font-black text-slate-900 text-xs">{formatBRL(s.close)}</p><p className="font-black text-rose-600 text-[10px]">{s.change.toFixed(2)}%</p></div></div>
-                                            ))}
-                                        </div>
-                                    </div>
+                                    <div className="bg-white rounded-[2rem] overflow-hidden shadow-sm border border-slate-100"><div className="p-8 bg-emerald-50/50 border-b flex items-center gap-3"><div className="p-2 bg-emerald-600 rounded-lg text-white"><LucideIcon name="TrendingUp" size={20}/></div><h2 className="font-black text-emerald-800 uppercase tracking-tighter text-xl">Maiores Altas</h2></div><div className="p-4 space-y-2">{marketTopGainers.map((s) => (<div key={s.stock} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl"><span className="font-black text-[#133054] uppercase">{s.stock}</span><div className="text-right"><p className="font-black text-slate-900 text-xs">{formatBRL(s.close)}</p><p className="font-black text-emerald-600 text-[10px]">+{s.change.toFixed(2)}%</p></div></div>))}</div></div>
+                                    <div className="bg-white rounded-[2rem] overflow-hidden shadow-sm border border-slate-100"><div className="p-8 bg-rose-50/50 border-b flex items-center gap-3"><div className="p-2 bg-rose-600 rounded-lg text-white"><LucideIcon name="TrendingDown" size={20}/></div><h2 className="font-black text-rose-800 uppercase tracking-tighter text-xl">Maiores Baixas</h2></div><div className="p-4 space-y-2">{marketTopLosers.map((s) => (<div key={s.stock} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl"><span className="font-black text-[#133054] uppercase">{s.stock}</span><div className="text-right"><p className="font-black text-slate-900 text-xs">{formatBRL(s.close)}</p><p className="font-black text-rose-600 text-[10px]">{s.change.toFixed(2)}%</p></div></div>))}</div></div>
                                 </div>
                             </div>
                         )}
@@ -1290,7 +880,7 @@
                                                     <td className="px-10 py-6 text-center font-bold">{m.quantidade.toLocaleString(undefined, { maximumFractionDigits: 8 })}</td>
                                                     <td className="px-10 py-6 text-right font-bold text-slate-400">{formatBRL(m.valorUnitario)}</td>
                                                     <td className="px-10 py-6 text-right font-black text-[#133054]">{formatBRL(m.valorTotal)}</td>
-                                                    <td className="px-10 py-6 text-right"><button onClick={() => { if(confirm("Remover?")) { const next = {...investments, movimentacoes: investments.movimentacoes.filter(x => x.id !== m.id)}; setInvestments(next); save(next); } }} className="text-slate-200 hover:text-rose-500"><LucideIcon name="Trash2" size={16}/></button></td>
+                                                    <td className="px-10 py-6 text-right"><button onClick={() => setConfirmDialog({ isOpen: true, message: 'Deseja remover esta movimentação?', onConfirm: () => { const next = {...investments, movimentacoes: investments.movimentacoes.filter(x => x.id !== m.id)}; setInvestments(next); save(next); setConfirmDialog({isOpen: false}); }})} className="text-slate-200 hover:text-rose-500"><LucideIcon name="Trash2" size={16}/></button></td>
                                                 </tr>
                                             ))}
                                         </tbody>
@@ -1306,7 +896,7 @@
                                     <StatCard isMobile={isMobile} title="A Receber (Previsão)" value={formatBRL(totals.divsPendentes)} icon="Calendar" colorClass="bg-[#133054]" />
                                 </div>
                                 <div className="bg-white rounded-[2rem] overflow-hidden shadow-sm border border-slate-100">
-                                    <div className="p-8 border-b flex justify-between items-center"><h2 className="text-2xl font-black uppercase text-[#133054]">Listagem de Proventos</h2><button onClick={() => lancarProvento(prompt("Ticker:"))} className="bg-emerald-600 text-white px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest">+ Novo Provento</button></div>
+                                    <div className="p-8 border-b flex justify-between items-center"><h2 className="text-2xl font-black uppercase text-[#133054]">Listagem de Proventos</h2><button onClick={() => setProventoModal({ isOpen: true, ativo: '' })} className="bg-emerald-600 text-white px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest">+ Novo Provento</button></div>
                                     <div className="overflow-x-auto custom-scroll">
                                         <table className="w-full text-left">
                                             <thead className="bg-slate-50 text-[10px] uppercase tracking-widest text-slate-400 font-black"><tr><th className="px-10 py-6">Data</th><th className="px-10 py-6">Ativo</th><th className="px-10 py-6 text-right">Valor</th><th className="px-10 py-6 text-center">Status</th><th className="px-10 py-6 text-right">Acções</th></tr></thead>
@@ -1320,7 +910,7 @@
                                                         <td className="px-10 py-6 text-right">
                                                             <div className="flex justify-end gap-3">
                                                                 {d.status === 'pendente' && <button onClick={() => confirmarRecebimento(d.id)} className="bg-emerald-600 text-white px-3 py-1 rounded-lg text-[9px] font-black uppercase">Receber</button>}
-                                                                <button onClick={() => { if(confirm("Apagar?")) { const next = {...investments, dividendos: investments.dividendos.filter(x => x.id !== d.id)}; setInvestments(next); save(next); } }} className="text-slate-200 hover:text-rose-500"><LucideIcon name="Trash2" size={16}/></button>
+                                                                <button onClick={() => setConfirmDialog({ isOpen: true, message: 'Eliminar provento?', onConfirm: () => { const next = {...investments, dividendos: investments.dividendos.filter(x => x.id !== d.id)}; setInvestments(next); save(next); setConfirmDialog({isOpen: false}); }})} className="text-slate-200 hover:text-rose-500"><LucideIcon name="Trash2" size={16}/></button>
                                                             </div>
                                                         </td>
                                                     </tr>
@@ -1338,42 +928,15 @@
                                     <h2 className="text-2xl font-black uppercase text-[#133054]">Evolução Patrimonial</h2>
                                     <button onClick={() => { 
                                         const totalInvestido = (totals.acoes.investido || 0) + (totals.re.investido || 0) + (totals.caixa.investido || 0) + (totals.alt.investido || 0);
-                                        const h = { 
-                                            id: Date.now().toString(), 
-                                            data: new Date().toLocaleDateString('pt-BR'), 
-                                            total: totals.total, 
-                                            investido: totalInvestido,
-                                            dividendos: totals.divsPagos || 0,
-                                            acoes: totals.acoes.atual, 
-                                            re: totals.re.atual, 
-                                            caixa: totals.caixa.atual, 
-                                            alt: totals.alt.atual 
-                                        }; 
-                                        setInvestments(prev => { 
-                                            const next = { ...prev, historico: [h, ...(prev.historico || [])] }; 
-                                            save(next); 
-                                            return next; 
-                                        }); 
-                                        setSyncStatus("Snapshot guardado!"); 
-                                        setTimeout(() => setSyncStatus(""), 2000); 
-                                    }} className="bg-[#133054] text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase shadow-lg flex items-center gap-2">
-                                        <LucideIcon name="Camera" size={14} /> Snapshot
-                                    </button>
+                                        const h = { id: Date.now().toString(), data: new Date().toLocaleDateString('pt-BR'), total: totals.total, investido: totalInvestido, dividendos: totals.divsPagos || 0, acoes: totals.acoes.atual, re: totals.re.atual, caixa: totals.caixa.atual, alt: totals.alt.atual }; 
+                                        setInvestments(prev => { const next = { ...prev, historico: [h, ...(prev.historico || [])] }; save(next); return next; }); 
+                                        setSyncStatus("Snapshot guardado!"); setTimeout(() => setSyncStatus(""), 2000); 
+                                    }} className="bg-[#133054] text-white px-8 py-3 rounded-2xl text-[10px] font-black uppercase shadow-lg flex items-center gap-2"><LucideIcon name="Camera" size={14} /> Snapshot</button>
                                 </div>
                                 <div className="bg-white rounded-[2rem] overflow-hidden shadow-sm border border-slate-100 overflow-x-auto custom-scroll">
                                     <table className="w-full text-left">
                                         <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                                            <tr>
-                                                <th className="px-10 py-6">Data Snapshot</th>
-                                                <th className="px-10 py-6 text-right">Total</th>
-                                                <th className="px-10 py-6 text-right">Valor Investido</th>
-                                                <th className="px-10 py-6 text-right">Dividendos</th>
-                                                <th className="px-10 py-6 text-right">Ações</th>
-                                                <th className="px-10 py-6 text-right">RE</th>
-                                                <th className="px-10 py-6 text-right">Caixa</th>
-                                                <th className="px-10 py-6 text-right">Alt</th>
-                                                <th className="px-10 py-6 text-right">Acção</th>
-                                            </tr>
+                                            <tr><th className="px-10 py-6">Data Snapshot</th><th className="px-10 py-6 text-right">Total</th><th className="px-10 py-6 text-right">Valor Investido</th><th className="px-10 py-6 text-right">Dividendos</th><th className="px-10 py-6 text-right">Ações</th><th className="px-10 py-6 text-right">RE</th><th className="px-10 py-6 text-right">Caixa</th><th className="px-10 py-6 text-right">Alt</th><th className="px-10 py-6 text-right">Acção</th></tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100 tabular text-sm">
                                             {(investments.historico || []).map(h => (
@@ -1386,7 +949,7 @@
                                                     <td className="px-10 py-6 text-right font-bold text-emerald-600">{formatBRL(h.re)}</td>
                                                     <td className="px-10 py-6 text-right font-bold text-slate-500">{formatBRL(h.caixa)}</td>
                                                     <td className="px-10 py-6 text-right font-bold text-rose-500">{formatBRL(h.alt)}</td>
-                                                    <td className="px-10 py-6 text-right"><button onClick={() => { if(confirm("Apagar?")) { setInvestments(prev => { const next = {...prev, historico: prev.historico.filter(x => x.id !== h.id)}; save(next); return next; }); } }} className="text-slate-200 hover:text-rose-500"><LucideIcon name="Trash2" size={16}/></button></td>
+                                                    <td className="px-10 py-6 text-right"><button onClick={() => setConfirmDialog({ isOpen: true, message: 'Eliminar snapshot?', onConfirm: () => { setInvestments(prev => { const next = {...prev, historico: prev.historico.filter(x => x.id !== h.id)}; save(next); return next; }); setConfirmDialog({isOpen: false}); }})} className="text-slate-200 hover:text-rose-500"><LucideIcon name="Trash2" size={16}/></button></td>
                                                 </tr>
                                             ))}
                                         </tbody>
@@ -1412,28 +975,12 @@
                                 <TabSummaryHeader stats={totals.caixa} label="Caixa" />
                                 <div className="bg-white rounded-[2rem] p-6 sm:p-8 shadow-sm border border-slate-100 animate-in mb-8">
                                     <div className="flex justify-between items-center flex-wrap gap-4 mb-6">
-                                        <div>
-                                            <h2 className="font-black text-[#133054] uppercase tracking-tighter text-xl sm:text-2xl">Gestão de Saldo Livre</h2>
-                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Adicione ou retire fundos da sua conta líquida</p>
-                                        </div>
-                                        <div className="text-right">
-                                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider block">Saldo Disponível</span>
-                                            <span className="text-xl sm:text-2xl font-black text-emerald-600 value-text block">{formatBRL(totals.saldo)}</span>
-                                        </div>
+                                        <div><h2 className="font-black text-[#133054] uppercase tracking-tighter text-xl sm:text-2xl">Gestão de Saldo Livre</h2><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Adicione ou retire fundos da sua conta líquida</p></div>
+                                        <div className="text-right"><span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider block">Saldo Disponível</span><span className="text-xl sm:text-2xl font-black text-emerald-600 value-text block">{formatBRL(totals.saldo)}</span></div>
                                     </div>
                                     <div className="flex flex-wrap gap-3">
-                                        <button 
-                                            onClick={() => setSaldoModal({ isOpen: true, type: 'DEPOSIT', valor: '', data: new Date().toLocaleDateString('pt-BR'), descricao: 'Aporte de Capital' })}
-                                            className="bg-emerald-600 text-white px-6 py-3.5 rounded-2xl text-[9px] font-black uppercase tracking-widest hover:bg-[#133054] shadow-md flex items-center gap-2 transition-all"
-                                        >
-                                            <LucideIcon name="PlusCircle" size={14} /> Depositar Dinheiro
-                                        </button>
-                                        <button 
-                                            onClick={() => setSaldoModal({ isOpen: true, type: 'WITHDRAW', valor: '', data: new Date().toLocaleDateString('pt-BR'), descricao: 'Resgate de Saldo' })}
-                                            className="bg-rose-600 text-white px-6 py-3.5 rounded-2xl text-[9px] font-black uppercase tracking-widest hover:bg-[#133054] shadow-md flex items-center gap-2 transition-all"
-                                        >
-                                            <LucideIcon name="MinusCircle" size={14} /> Sacar Dinheiro
-                                        </button>
+                                        <button onClick={() => setSaldoModal({ isOpen: true, type: 'DEPOSIT', valor: '', data: new Date().toLocaleDateString('pt-BR'), descricao: 'Aporte de Capital' })} className="bg-emerald-600 text-white px-6 py-3.5 rounded-2xl text-[9px] font-black uppercase tracking-widest hover:bg-[#133054] shadow-md flex items-center gap-2 transition-all"><LucideIcon name="PlusCircle" size={14} /> Depositar Dinheiro</button>
+                                        <button onClick={() => setSaldoModal({ isOpen: true, type: 'WITHDRAW', valor: '', data: new Date().toLocaleDateString('pt-BR'), descricao: 'Resgate de Saldo' })} className="bg-rose-600 text-white px-6 py-3.5 rounded-2xl text-[9px] font-black uppercase tracking-widest hover:bg-[#133054] shadow-md flex items-center gap-2 transition-all"><LucideIcon name="MinusCircle" size={14} /> Sacar Dinheiro</button>
                                     </div>
                                 </div>
                                 {renderTableSection('caixa', 'Reserva Manual', 'manual')}
@@ -1455,65 +1002,78 @@
                         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in">
                             <div className="bg-white rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl border border-slate-100 space-y-6">
                                 <div className="flex justify-between items-center">
-                                    <h3 className="text-xl font-black text-[#133054] uppercase tracking-tight">
-                                        {saldoModal.type === 'DEPOSIT' ? 'Depositar no Saldo Livre' : 'Sacar do Saldo Livre'}
-                                    </h3>
-                                    <button onClick={() => { setSaldoModal(prev => ({ ...prev, isOpen: false })); setModalError(""); }} className="text-slate-400 hover:text-slate-600 transition-colors">
-                                        <LucideIcon name="X" size={20} />
-                                    </button>
+                                    <h3 className="text-xl font-black text-[#133054] uppercase tracking-tight">{saldoModal.type === 'DEPOSIT' ? 'Depositar no Saldo Livre' : 'Sacar do Saldo Livre'}</h3>
+                                    <button onClick={() => { setSaldoModal(prev => ({ ...prev, isOpen: false })); setModalError(""); }} className="text-slate-400 hover:text-slate-600 transition-colors"><LucideIcon name="X" size={20} /></button>
                                 </div>
-
-                                {modalError && (
-                                    <div className="p-3.5 bg-rose-50 text-rose-700 border border-rose-100 rounded-2xl text-[10px] font-black uppercase flex items-center gap-2">
-                                        <LucideIcon name="AlertCircle" size={14} className="flex-shrink-0" />
-                                        <span>{modalError}</span>
-                                    </div>
-                                )}
-
+                                {modalError && (<div className="p-3.5 bg-rose-50 text-rose-700 border border-rose-100 rounded-2xl text-[10px] font-black uppercase flex items-center gap-2"><LucideIcon name="AlertCircle" size={14} className="flex-shrink-0" /><span>{modalError}</span></div>)}
                                 <div className="space-y-4">
-                                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex justify-between items-center">
-                                        <span className="text-[10px] font-black uppercase text-slate-400">Saldo Atualmente Livre:</span>
-                                        <span className="font-black text-slate-900 text-sm">{formatBRL(totals.saldo)}</span>
-                                    </div>
-                                    
-                                    <div>
-                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Valor (R$)</label>
-                                        <input 
-                                            type="text" 
-                                            placeholder="0,00"
-                                            value={saldoModal.valor} 
-                                            onChange={e => setSaldoModal(prev => ({ ...prev, valor: e.target.value }))}
-                                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054] focus:bg-white transition-all text-sm text-slate-900"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Data da Transação</label>
-                                        <input 
-                                            type="text" 
-                                            value={saldoModal.data} 
-                                            onChange={e => setSaldoModal(prev => ({ ...prev, data: e.target.value }))}
-                                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054] focus:bg-white transition-all text-sm text-slate-900"
-                                        />
-                                    </div>
+                                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex justify-between items-center"><span className="text-[10px] font-black uppercase text-slate-400">Saldo Atualmente Livre:</span><span className="font-black text-slate-900 text-sm">{formatBRL(totals.saldo)}</span></div>
+                                    <div><label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Valor (R$)</label><input type="text" placeholder="0,00" value={saldoModal.valor} onChange={e => setSaldoModal(prev => ({ ...prev, valor: e.target.value }))} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054] transition-all text-sm text-slate-900" /></div>
+                                    <div><label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Data da Transação</label><input type="text" value={saldoModal.data} onChange={e => setSaldoModal(prev => ({ ...prev, data: e.target.value }))} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054] transition-all text-sm text-slate-900" /></div>
                                 </div>
-
                                 <div className="flex gap-3 pt-4">
-                                    <button 
-                                        onClick={() => { setSaldoModal(prev => ({ ...prev, isOpen: false })); setModalError(""); }} 
-                                        className="flex-1 py-3.5 border border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-colors"
-                                    >
-                                        Cancelar
-                                    </button>
-                                    <button 
-                                        onClick={handleSaldoTransaction} 
-                                        className={`flex-1 py-3.5 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-colors ${
-                                            saldoModal.type === 'DEPOSIT' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-lg' : 'bg-rose-600 hover:bg-rose-700 shadow-lg'
-                                        }`}
-                                    >
-                                        {saldoModal.type === 'DEPOSIT' ? 'Depositar' : 'Sacar'}
-                                    </button>
+                                    <button onClick={() => { setSaldoModal(prev => ({ ...prev, isOpen: false })); setModalError(""); }} className="flex-1 py-3.5 border border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-colors">Cancelar</button>
+                                    <button onClick={handleSaldoTransaction} className={`flex-1 py-3.5 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-colors ${saldoModal.type === 'DEPOSIT' ? 'bg-emerald-600 hover:bg-emerald-700 shadow-lg' : 'bg-rose-600 hover:bg-rose-700 shadow-lg'}`}>{saldoModal.type === 'DEPOSIT' ? 'Depositar' : 'Sacar'}</button>
                                 </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* MODAL PREMIUM NOVO ATIVO */}
+                    {newAssetModal.isOpen && (() => {
+                        const isTicker = newAssetModal.type === 'ticker';
+                        return (
+                            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in">
+                                <div className="bg-white rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl border border-slate-100 space-y-6">
+                                    <div className="flex justify-between items-center mb-2"><h3 className="text-xl font-black text-[#133054] uppercase tracking-tight">Adicionar Novo Ativo</h3><button onClick={() => setNewAssetModal({ isOpen: false })} className="text-slate-400 hover:text-slate-600"><LucideIcon name="X" size={20} /></button></div>
+                                    <form onSubmit={(e) => { e.preventDefault(); handleCreateAsset(Object.fromEntries(new FormData(e.target))); }} className="space-y-4">
+                                        {isTicker ? (
+                                            <><input name="ticker" placeholder="Ticker (Ex: AAPL)" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold uppercase outline-none focus:border-[#133054]" required /><input name="quantidade" placeholder="Quantidade" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054]" required /><input name="precoMedio" placeholder="Preço Médio de Compra" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054]" required /></>
+                                        ) : (
+                                            <><input name="nome" placeholder="Nome do Ativo" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054]" required /><input name="valorAplicado" placeholder="Valor Aplicado" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054]" required /><input name="valorAtual" placeholder="Valor Atual (Opcional)" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054]" /></>
+                                        )}
+                                        <div className="flex gap-3 pt-4"><button type="button" onClick={() => setNewAssetModal({ isOpen: false })} className="flex-1 py-3.5 border border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50">Cancelar</button><button type="submit" className="flex-1 py-3.5 bg-[#133054] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-black">Adicionar</button></div>
+                                    </form>
+                                </div>
+                            </div>
+                        );
+                    })()}
+
+                    {/* MODAL COMPRA/VENDA */}
+                    {tradeModal.isOpen && (() => {
+                        const isBuy = tradeModal.operation === 'BUY';
+                        const isTicker = tradeModal.type === 'ticker';
+                        const label = isBuy ? 'Comprar' : 'Vender';
+                        const ativoNome = isTicker ? tradeModal.item.ticker : tradeModal.item.nome;
+                        return (
+                            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in">
+                                <div className="bg-white rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl border border-slate-100 space-y-6">
+                                    <div className="flex justify-between items-center mb-2"><h3 className={`text-xl font-black uppercase tracking-tight ${isBuy ? 'text-emerald-600' : 'text-orange-600'}`}>{label} {ativoNome}</h3><button onClick={() => setTradeModal({ isOpen: false })} className="text-slate-400 hover:text-slate-600"><LucideIcon name="X" size={20} /></button></div>
+                                    <form onSubmit={(e) => { e.preventDefault(); handleExecuteTrade(Object.fromEntries(new FormData(e.target))); }} className="space-y-4">
+                                        {isTicker ? (
+                                            <><input name="quantidade" defaultValue="1" placeholder="Quantidade" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054]" required /><input name="preco" defaultValue={tradeModal.item.precoAtual || tradeModal.item.precoMedio} placeholder="Preço Unitário" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054]" required /></>
+                                        ) : (
+                                            <input name="valor" placeholder="Valor (R$)" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054]" required />
+                                        )}
+                                        <div className="flex gap-3 pt-4"><button type="button" onClick={() => setTradeModal({ isOpen: false })} className="flex-1 py-3.5 border border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50">Cancelar</button><button type="submit" className={`flex-1 py-3.5 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest ${isBuy ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-orange-600 hover:bg-orange-700'}`}>Confirmar</button></div>
+                                    </form>
+                                </div>
+                            </div>
+                        );
+                    })()}
+
+                    {/* MODAL PROVENTO */}
+                    {proventoModal.isOpen && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in">
+                            <div className="bg-white rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl border border-slate-100 space-y-6">
+                                <div className="flex justify-between items-center mb-2"><h3 className="text-xl font-black text-[#133054] uppercase tracking-tight">Lançar Provento {proventoModal.ativo && `- ${proventoModal.ativo}`}</h3><button onClick={() => setProventoModal({ isOpen: false })} className="text-slate-400 hover:text-slate-600"><LucideIcon name="X" size={20} /></button></div>
+                                <form onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.target); handleSaveProvento({ valor: fd.get('valor'), dataStr: fd.get('dataStr'), isPaid: fd.get('isPaid') === 'on' }); }} className="space-y-4">
+                                    {!proventoModal.ativo && <input name="ativo" placeholder="Ticker do Ativo" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold uppercase outline-none focus:border-[#133054]" required onChange={e => setProventoModal(prev => ({...prev, ativo: e.target.value}))} />}
+                                    <input name="valor" placeholder="Valor do Provento (R$)" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054]" required />
+                                    <input name="dataStr" defaultValue={new Date().toLocaleDateString('pt-BR')} placeholder="Data (DD/MM/AAAA)" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054]" required />
+                                    <div className="flex items-center gap-3 mt-2 px-1"><input type="checkbox" name="isPaid" id="isPaid" defaultChecked className="w-4 h-4 text-emerald-600" /><label htmlFor="isPaid" className="text-xs font-bold text-slate-700 uppercase tracking-wider cursor-pointer">Valor já Recebido (Pago)</label></div>
+                                    <div className="flex gap-3 pt-4"><button type="button" onClick={() => setProventoModal({ isOpen: false })} className="flex-1 py-3.5 border border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50">Cancelar</button><button type="submit" className="flex-1 py-3.5 bg-emerald-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700">Guardar</button></div>
+                                </form>
                             </div>
                         </div>
                     )}
@@ -1524,114 +1084,56 @@
                             <div className="bg-white rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl border border-slate-100 space-y-6">
                                 <div className="flex justify-between items-center">
                                     <h3 className="text-xl font-black text-[#133054] uppercase tracking-tight">Editar Ativo</h3>
-                                    <button onClick={() => setEditModal(prev => ({ ...prev, isOpen: false }))} className="text-slate-400 hover:text-slate-600 transition-colors">
-                                        <LucideIcon name="X" size={20} />
-                                    </button>
+                                    <button onClick={() => setEditModal(prev => ({ ...prev, isOpen: false }))} className="text-slate-400 hover:text-slate-600 transition-colors"><LucideIcon name="X" size={20} /></button>
                                 </div>
-
                                 <div className="space-y-4">
                                     {editModal.type === 'ticker' ? (
                                         <>
-                                            <div>
-                                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Ticker / Símbolo</label>
-                                                <input 
-                                                    type="text" 
-                                                    value={editModal.ticker} 
-                                                    onChange={e => setEditModal(prev => ({ ...prev, ticker: e.target.value }))}
-                                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold uppercase outline-none focus:border-[#133054] focus:bg-white transition-all text-sm text-slate-900"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Quantidade</label>
-                                                <input 
-                                                    type="text" 
-                                                    value={editModal.quantidade} 
-                                                    onChange={e => setEditModal(prev => ({ ...prev, quantidade: e.target.value }))}
-                                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054] focus:bg-white transition-all text-sm text-slate-900"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Preço Médio de Compra (R$)</label>
-                                                <input 
-                                                    type="text" 
-                                                    value={editModal.precoMedio} 
-                                                    onChange={e => setEditModal(prev => ({ ...prev, precoMedio: e.target.value }))}
-                                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054] focus:bg-white transition-all text-sm text-slate-900"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Preço Atual / Cotação (R$)</label>
-                                                <input 
-                                                    type="text" 
-                                                    value={editModal.precoAtual} 
-                                                    onChange={e => setEditModal(prev => ({ ...prev, precoAtual: e.target.value }))}
-                                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054] focus:bg-white transition-all text-sm text-slate-900"
-                                                />
-                                            </div>
+                                            <div><label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Ticker / Símbolo</label><input type="text" value={editModal.ticker} onChange={e => setEditModal(prev => ({ ...prev, ticker: e.target.value }))} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold uppercase outline-none focus:border-[#133054] transition-all text-sm text-slate-900" /></div>
+                                            <div><label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Quantidade</label><input type="text" value={editModal.quantidade} onChange={e => setEditModal(prev => ({ ...prev, quantidade: e.target.value }))} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054] transition-all text-sm text-slate-900" /></div>
+                                            <div><label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Preço Médio de Compra (R$)</label><input type="text" value={editModal.precoMedio} onChange={e => setEditModal(prev => ({ ...prev, precoMedio: e.target.value }))} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054] transition-all text-sm text-slate-900" /></div>
+                                            <div><label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Preço Atual / Cotação (R$)</label><input type="text" value={editModal.precoAtual} onChange={e => setEditModal(prev => ({ ...prev, precoAtual: e.target.value }))} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054] transition-all text-sm text-slate-900" /></div>
                                         </>
                                     ) : (
                                         <>
-                                            <div>
-                                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Nome do Ativo</label>
-                                                <input 
-                                                    type="text" 
-                                                    value={editModal.nome} 
-                                                    onChange={e => setEditModal(prev => ({ ...prev, nome: e.target.value }))}
-                                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054] focus:bg-white transition-all text-sm text-slate-900"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Valor Aplicado (R$)</label>
-                                                <input 
-                                                    type="text" 
-                                                    value={editModal.valorAplicado} 
-                                                    onChange={e => setEditModal(prev => ({ ...prev, valorAplicado: e.target.value }))}
-                                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054] focus:bg-white transition-all text-sm text-slate-900"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Valor Atualizado (R$)</label>
-                                                <input 
-                                                    type="text" 
-                                                    value={editModal.valorAtual} 
-                                                    onChange={e => setEditModal(prev => ({ ...prev, valorAtual: e.target.value }))}
-                                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054] focus:bg-white transition-all text-sm text-slate-900"
-                                                />
-                                            </div>
+                                            <div><label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Nome do Ativo</label><input type="text" value={editModal.nome} onChange={e => setEditModal(prev => ({ ...prev, nome: e.target.value }))} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054] transition-all text-sm text-slate-900" /></div>
+                                            <div><label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Valor Aplicado (R$)</label><input type="text" value={editModal.valorAplicado} onChange={e => setEditModal(prev => ({ ...prev, valorAplicado: e.target.value }))} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054] transition-all text-sm text-slate-900" /></div>
+                                            <div><label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Valor Atualizado (R$)</label><input type="text" value={editModal.valorAtual} onChange={e => setEditModal(prev => ({ ...prev, valorAtual: e.target.value }))} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054] transition-all text-sm text-slate-900" /></div>
                                         </>
                                     )}
-                                    
-                                    <div>
-                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Meta de Alocação Custo Ideal (R$)</label>
-                                        <input 
-                                            type="text" 
-                                            placeholder="Ex: 5000"
-                                            value={editModal.metaRs} 
-                                            onChange={e => setEditModal(prev => ({ ...prev, metaRs: e.target.value }))}
-                                            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054] focus:bg-white transition-all text-sm text-slate-900"
-                                        />
-                                    </div>
+                                    <div><label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Meta de Alocação Custo Ideal (R$)</label><input type="text" placeholder="Ex: 5000" value={editModal.metaRs} onChange={e => setEditModal(prev => ({ ...prev, metaRs: e.target.value }))} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-[#133054] transition-all text-sm text-slate-900" /></div>
                                 </div>
+                                <div className="flex gap-3 pt-4"><button onClick={() => setEditModal(prev => ({ ...prev, isOpen: false }))} className="flex-1 py-3.5 border border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-colors">Cancelar</button><button onClick={handleSaveEdit} className="flex-1 py-3.5 bg-[#133054] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-black transition-colors">Gravar Ativo</button></div>
+                            </div>
+                        </div>
+                    )}
 
-                                <div className="flex gap-3 pt-4">
-                                    <button 
-                                        onClick={() => setEditModal(prev => ({ ...prev, isOpen: false }))} 
-                                        className="flex-1 py-3.5 border border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-colors"
-                                    >
-                                        Cancelar
-                                    </button>
-                                    <button 
-                                        onClick={handleSaveEdit} 
-                                        className="flex-1 py-3.5 bg-[#133054] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-black transition-colors"
-                                    >
-                                        Gravar Ativo
-                                    </button>
+                    {/* Dialog Genérico para Avisos de Erro / Alerta */}
+                    {alertDialog.isOpen && (
+                        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in">
+                            <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-slate-100 text-center">
+                                <LucideIcon name="Info" size={40} className="mx-auto text-blue-500 mb-4" />
+                                <p className="font-bold text-slate-800 mb-6">{alertDialog.message}</p>
+                                <button onClick={() => setAlertDialog({ isOpen: false, message: '' })} className="w-full py-3 bg-[#133054] text-white rounded-xl font-black uppercase text-[10px] tracking-widest">OK</button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Dialog para Confirmações Críticas (Substitui confirm() do Browser) */}
+                    {confirmDialog.isOpen && (
+                        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in">
+                            <div className="bg-white rounded-[2rem] p-8 max-w-sm w-full shadow-2xl border border-slate-100 text-center">
+                                <LucideIcon name="AlertTriangle" size={48} className="mx-auto text-amber-500 mb-4" />
+                                <h3 className="text-lg font-black text-slate-900 mb-6">{confirmDialog.message}</h3>
+                                <div className="flex gap-3">
+                                    <button onClick={() => setConfirmDialog({ isOpen: false })} className="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl font-bold uppercase text-[10px] tracking-widest transition-colors">Cancelar</button>
+                                    <button onClick={confirmDialog.onConfirm} className="flex-1 py-3.5 bg-rose-600 hover:bg-rose-700 text-white rounded-2xl font-bold uppercase text-[10px] tracking-widest transition-colors">Confirmar</button>
                                 </div>
                             </div>
                         </div>
                     )}
 
-                    <footer className="mt-20 py-10 text-center border-t border-slate-100 text-[10px] font-black text-slate-300 uppercase tracking-[0.5em]">IcaroInvest Elite Management v11.16</footer>
+                    <footer className="mt-20 py-10 text-center border-t border-slate-100 text-[10px] font-black text-slate-300 uppercase tracking-[0.5em]">IcaroInvest Elite Management v11.20</footer>
                 </div>
             );
         };
