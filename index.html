@@ -46,7 +46,7 @@
     <div id="root">
         <div class="flex flex-col items-center justify-center min-h-screen">
             <div class="w-12 h-12 border-4 border-[#133054] border-t-transparent rounded-full animate-spin mb-4"></div>
-            <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">A carregar IcaroInvest Elite v11.21...</p>
+            <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">A carregar IcaroInvest Elite v11.23...</p>
         </div>
     </div>
 
@@ -94,8 +94,11 @@
         window.dispatchEvent(new Event('firebase-loaded'));
     </script>
 
-    <!-- Corrigido: Remoção da flag de módulo para forçar o React clássico e evitar o erro jsx-runtime -->
+    <!-- Corrigido: Adição do Pragma JSX para evitar o erro do jsx-runtime no Babel Standalone -->
     <script type="text/babel">
+        /** @jsx React.createElement */
+        /** @jsxFrag React.Fragment */
+
         const { useState, useEffect, useMemo, useRef } = React;
         const { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } = window.Recharts;
 
@@ -1134,7 +1137,7 @@
                         </div>
                     )}
 
-                    <footer className="mt-20 py-10 text-center border-t border-slate-100 text-[10px] font-black text-slate-300 uppercase tracking-[0.5em]">IcaroInvest Elite Management v11.21</footer>
+                    <footer className="mt-20 py-10 text-center border-t border-slate-100 text-[10px] font-black text-slate-300 uppercase tracking-[0.5em]">IcaroInvest Elite Management v11.23</footer>
                 </div>
             );
         };
