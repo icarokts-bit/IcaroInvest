@@ -46,7 +46,7 @@
     <div id="root">
         <div class="flex flex-col items-center justify-center min-h-screen">
             <div class="w-12 h-12 border-4 border-[#133054] border-t-transparent rounded-full animate-spin mb-4"></div>
-            <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">A carregar IcaroInvest Elite v11.23...</p>
+            <p class="font-bold text-slate-400 animate-pulse uppercase tracking-widest text-xs">A carregar IcaroInvest Elite v11.24...</p>
         </div>
     </div>
 
@@ -57,6 +57,15 @@
     <script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Configuração do Babel para forçar o React Classic Runtime (evita erros jsx-runtime) -->
+    <script>
+        Babel.registerPreset('react-classic', {
+            presets: [
+                [Babel.availablePresets['react'], { runtime: 'classic' }]
+            ]
+        });
+    </script>
 
     <!-- Firebase Compat Libraries -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
@@ -94,11 +103,8 @@
         window.dispatchEvent(new Event('firebase-loaded'));
     </script>
 
-    <!-- Corrigido: Adição do Pragma JSX para evitar o erro do jsx-runtime no Babel Standalone -->
-    <script type="text/babel">
-        /** @jsx React.createElement */
-        /** @jsxFrag React.Fragment */
-
+    <!-- Script Principal com a configuração react-classic injetada -->
+    <script type="text/babel" data-presets="env,react-classic">
         const { useState, useEffect, useMemo, useRef } = React;
         const { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } = window.Recharts;
 
@@ -1137,7 +1143,7 @@
                         </div>
                     )}
 
-                    <footer className="mt-20 py-10 text-center border-t border-slate-100 text-[10px] font-black text-slate-300 uppercase tracking-[0.5em]">IcaroInvest Elite Management v11.23</footer>
+                    <footer className="mt-20 py-10 text-center border-t border-slate-100 text-[10px] font-black text-slate-300 uppercase tracking-[0.5em]">IcaroInvest Elite Management v11.24</footer>
                 </div>
             );
         };
